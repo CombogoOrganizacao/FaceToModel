@@ -111,6 +111,7 @@ export class Renderer {
     this._fpsFrames = 0;
     this._fpsLast = performance.now();
     this._running = false;
+    this._currentShadingMode = 'studio';
 
     /* ── Organic Smoothing & 3DoF Rotation ── */
     this._targetBlendshapes = {};
@@ -182,6 +183,16 @@ export class Renderer {
     this._modelMap          = map;
     this.blendshapeCoverage = coverage;
 
+    // Cache original materials for shading modes
+    model.traverse((node) => {
+      if (node.isMesh && node.material) {
+        node.userData.originalMaterial = node.material;
+      }
+    });
+
+    // Apply currently active shading mode
+    this.setShadingMode(this._currentShadingMode);
+
     this.resetCamera();
     console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 (HeadBone: ${this._headBone ? this._headBone.name : 'root'})`);
     return model;
@@ -235,6 +246,105 @@ export class Renderer {
   }
 
   /**
+   * Set real-time viewport shading / lighting mode (Blender style)
+   * @param {'studio'|'sunset'|'cyber'|'clay'|'normals'|'wireframe'} mode
+   */
+  setShadingMode(mode) {
+    this._currentShadingMode = mode;
+    if (!this._ambientLight || !this._keyLight) return;
+
+    // Reset default lighting intensities & colors
+    switch (mode) {
+      case 'sunset':
+        this._keyLight.color.setHex(0xffaa44);
+        this._keyLight.intensity = 2.8;
+        this._keyLight.position.set(2.5, 1.2, 1.8);
+        this._fillLight.color.setHex(0x7040aa);
+        this._fillLight.intensity = 0.8;
+        this._fillLight.position.set(-2.0, 0.2, 1.0);
+        this._rimLight.color.setHex(0xff6622);
+        this._rimLight.intensity = 1.4;
+        this._rimLight.position.set(0, 1.5, -2.0);
+        this._ambientLight.color.setHex(0xffe0cc);
+        this._ambientLight.intensity = 0.45;
+        break;
+
+      case 'cyber':
+        this._keyLight.color.setHex(0x00f0ff);
+        this._keyLight.intensity = 2.4;
+        this._keyLight.position.set(2.0, 1.5, 1.5);
+        this._fillLight.color.setHex(0xff0077);
+        this._fillLight.intensity = 1.8;
+        this._fillLight.position.set(-2.0, 0.5, 1.5);
+        this._rimLight.color.setHex(0x7700ff);
+        this._rimLight.intensity = 2.0;
+        this._rimLight.position.set(0, 1.5, -2.5);
+        this._ambientLight.color.setHex(0x08041a);
+        this._ambientLight.intensity = 0.35;
+        break;
+
+      case 'clay':
+      case 'normals':
+      case 'wireframe':
+      case 'studio':
+      default:
+        // Balanced Studio 3-point light
+        this._keyLight.color.setHex(0xfff5e0);
+        this._keyLight.intensity = 2.0;
+        this._keyLight.position.set(1.5, 2.0, 2.0);
+        this._fillLight.color.setHex(0xd0e8ff);
+        this._fillLight.intensity = 1.0;
+        this._fillLight.position.set(-2.0, 0.5, 1.5);
+        this._rimLight.color.setHex(0xaa88ff);
+        this._rimLight.intensity = 0.8;
+        this._rimLight.position.set(0, 1.0, -2.0);
+        this._ambientLight.color.setHex(0xffffff);
+        this._ambientLight.intensity = 0.7;
+        break;
+    }
+
+    if (!this._model) return;
+
+    // Apply materials
+    this._model.traverse((node) => {
+      if (node.isMesh) {
+        const orig = node.userData.originalMaterial;
+        if (!orig) return;
+
+        if (mode === 'clay') {
+          if (!node.userData.clayMaterial) {
+            node.userData.clayMaterial = new THREE.MeshStandardMaterial({
+              color: 0xccbba8,
+              roughness: 0.65,
+              metalness: 0.05,
+              flatShading: false,
+            });
+          }
+          node.material = node.userData.clayMaterial;
+          node.material.wireframe = false;
+        } else if (mode === 'normals') {
+          if (!node.userData.normalMaterial) {
+            node.userData.normalMaterial = new THREE.MeshNormalMaterial({
+              flatShading: false,
+            });
+          }
+          node.material = node.userData.normalMaterial;
+          node.material.wireframe = false;
+        } else if (mode === 'wireframe') {
+          node.material = orig;
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => { m.wireframe = true; });
+        } else {
+          // Restore original material
+          node.material = orig;
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => { m.wireframe = false; });
+        }
+      }
+    });
+  }
+
+  /**
    * Reset camera position.
    */
   resetCamera() {
@@ -261,22 +371,22 @@ export class Renderer {
   /* ─── Private ─────────────────────────────────────────────────────────── */
 
   _setupLighting() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
-    this._scene.add(ambient);
+    this._ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    this._scene.add(this._ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff5e0, 2.0);
-    keyLight.position.set(1.5, 2.0, 2.0);
-    keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(1024, 1024);
-    this._scene.add(keyLight);
+    this._keyLight = new THREE.DirectionalLight(0xfff5e0, 2.0);
+    this._keyLight.position.set(1.5, 2.0, 2.0);
+    this._keyLight.castShadow = true;
+    this._keyLight.shadow.mapSize.set(1024, 1024);
+    this._scene.add(this._keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0xd0e8ff, 1.0);
-    fillLight.position.set(-2.0, 0.5, 1.5);
-    this._scene.add(fillLight);
+    this._fillLight = new THREE.DirectionalLight(0xd0e8ff, 1.0);
+    this._fillLight.position.set(-2.0, 0.5, 1.5);
+    this._scene.add(this._fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xaa88ff, 0.8);
-    rimLight.position.set(0, 1.0, -2.0);
-    this._scene.add(rimLight);
+    this._rimLight = new THREE.DirectionalLight(0xaa88ff, 0.8);
+    this._rimLight.position.set(0, 1.0, -2.0);
+    this._scene.add(this._rimLight);
   }
 
   _loop() {

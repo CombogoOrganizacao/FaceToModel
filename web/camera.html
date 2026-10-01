@@ -257,7 +257,10 @@
       // 2. Iniciar Câmera
       loaderTitle.textContent = 'Acessando Câmera...';
       loaderSub.textContent = 'Toque em Permitir no Safari';
-      await setupCamera();
+      const camStream = await setupCamera();
+      if (p2pClient && camStream) {
+        p2pClient.sendStream(camStream);
+      }
 
       // 3. Inicializar MediaPipe
       loaderTitle.textContent = 'Carregando IA Facial...';
@@ -296,7 +299,7 @@
     return new Promise((resolve) => {
       video.onloadedmetadata = () => {
         video.play();
-        resolve();
+        resolve(stream);
       };
     });
   }

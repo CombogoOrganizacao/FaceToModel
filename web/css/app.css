@@ -72,7 +72,19 @@ html, body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.viewport-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   background: radial-gradient(circle at 50% 40%, #151522 0%, #06060a 100%);
+  background-size: cover;
+  background-position: center;
+  transition: filter 0.15s ease;
+  pointer-events: none;
 }
 
 #main-canvas {
@@ -80,6 +92,126 @@ html, body {
   width: 100%;
   height: 100%;
   outline: none;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Botão Flutuante de Controle do Drawer ── */
+.drawer-trigger-btn {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  z-index: 35;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: rgba(28, 28, 32, 0.75);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 0.5px solid var(--border-subtle);
+  color: var(--label-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.drawer-trigger-btn:hover {
+  background: rgba(45, 45, 52, 0.85);
+  transform: scale(1.04);
+}
+.drawer-trigger-btn:active {
+  transform: scale(0.96);
+}
+
+/* ── Picture-in-Picture Smartphone Camera Preview ── */
+.pip-window {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 190px;
+  height: 250px;
+  background: rgba(18, 18, 22, 0.85);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pip-window.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92) translateY(12px);
+}
+.pip-header {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 0.5px solid var(--border-divider);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--label-secondary);
+}
+.pip-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sys-gray);
+  transition: background 0.2s ease;
+}
+.pip-dot.active {
+  background: var(--sys-green);
+  box-shadow: 0 0 6px var(--sys-green);
+}
+.pip-close {
+  background: none;
+  border: none;
+  color: var(--label-tertiary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+.pip-close:hover {
+  color: #fff;
+}
+.pip-body {
+  flex: 1;
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+#pip-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.pip-empty {
+  position: absolute;
+  inset: 0;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  color: var(--label-tertiary);
+  background: #0d0d12;
 }
 
 /* ── HUD Status Badge on Canvas ── */
@@ -101,6 +233,7 @@ html, body {
   color: var(--label-primary);
   pointer-events: none;
   transition: all 0.3s ease;
+  z-index: 20;
 }
 
 .canvas-hud .hud-dot {
@@ -115,10 +248,13 @@ html, body {
   box-shadow: 0 0 10px var(--sys-green);
 }
 
-/* ── Sidebar (Apple HIG Minimal) ── */
-.sidebar {
+/* ── Drawer Lateral Direito (Apple HIG Retrátil) ── */
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: var(--sidebar-width);
-  flex-shrink: 0;
   height: 100%;
   background: var(--bg-sidebar);
   backdrop-filter: var(--blur-sidebar);
@@ -128,15 +264,46 @@ html, body {
   flex-direction: column;
   overflow-y: auto;
   scrollbar-width: none;
+  z-index: 50;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.5);
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.sidebar::-webkit-scrollbar { display: none; }
+.sidebar-drawer.open {
+  transform: translateX(0);
+}
+.sidebar-drawer::-webkit-scrollbar { display: none; }
 
 .sidebar-header {
-  padding: 24px 20px 16px;
+  padding: 20px 18px 14px;
   border-bottom: 0.5px solid var(--border-divider);
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: var(--label-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.drawer-close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
 }
 
 .brand {
@@ -247,6 +414,7 @@ html, body {
 .row-icon-box.blue   { background: var(--sys-blue); }
 .row-icon-box.green  { background: var(--sys-green); }
 .row-icon-box.orange { background: var(--sys-orange); }
+.row-icon-box.purple { background: #af52de; }
 .row-icon-box.gray   { background: #3a3a3c; color: var(--label-secondary); }
 
 .row-text {
@@ -308,9 +476,162 @@ html, body {
 .btn-apple.secondary:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+.btn-apple.sm {
+  height: 32px;
+  font-size: 12px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+}
+.btn-apple.destructive {
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--sys-red);
+  border: 0.5px solid rgba(255, 69, 58, 0.3);
+}
+.btn-apple.destructive:hover {
+  background: rgba(255, 69, 58, 0.25);
+}
 .btn-apple.danger {
   background: rgba(255, 69, 58, 0.15);
   color: var(--sys-red);
+}
+
+.btn-text-subtle {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--label-tertiary);
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.btn-text-subtle:hover {
+  color: var(--label-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Shading Selector (Blender Viewport Shading) ── */
+.shading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.shading-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border: 0.5px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--label-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+.shading-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.shading-pill.active {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.shading-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Device Selects (Camera & Microphone) ── */
+.card-device-selects {
+  padding: 10px 14px 14px;
+  border-top: 0.5px solid var(--border-divider);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.select-label {
+  font-size: 11px;
+  color: var(--label-tertiary);
+  font-weight: 500;
+}
+.apple-select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.5px solid var(--border-subtle);
+  color: var(--label-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.apple-select:focus {
+  border-color: var(--sys-blue);
+}
+.apple-select option {
+  background: #1c1c1e;
+  color: #fff;
+}
+
+/* ── Apple Range Slider ── */
+.slider-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+.slider-title {
+  color: var(--label-secondary);
+}
+.slider-value {
+  font-family: var(--font-mono);
+  color: var(--label-primary);
+  font-weight: 500;
+}
+.apple-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+.apple-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.apple-slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
 }
 
 /* ── Apple Native Toggle Switch ── */

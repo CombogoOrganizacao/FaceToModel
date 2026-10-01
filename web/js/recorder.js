@@ -9,31 +9,29 @@
  * @module recorder
  */
 
-/* ─── Supported MIME Types (checked in preference order) ───────────────── */
+/* ─── Supported MIME Types (checked in preference order — MP4 first) ───── */
 
 const PREFERRED_MIME_TYPES = [
-  'video/webm;codecs=vp9',
-  'video/webm;codecs=vp8',
-  'video/webm',
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4;codecs=avc1',
+  'video/mp4;codecs=h264',
   'video/mp4',
+  'video/webm;codecs=h264',
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp9',
+  'video/webm',
 ];
 
 /* ─── Recorder ──────────────────────────────────────────────────────────── */
 
 /**
  * Records the Three.js canvas as a video file, with optional microphone audio.
+ * Prioritizes native MP4 containers.
  *
  * Dispatches three custom DOM events on the canvas element:
  *   - `recordingstarted`  — when recording begins
  *   - `recordingstopped`  — when recording ends; `event.detail.url` holds the blob URL
  *   - `durationupdate`    — every second; `event.detail.seconds` is elapsed time
- *
- * @example
- * const recorder = new Recorder(canvas);
- * await recorder.startRecording();
- * // ... later ...
- * const url = await recorder.stopRecording();
- * recorder.downloadRecording('face-capture.webm');
  */
 export class Recorder {
   /**
@@ -52,6 +50,9 @@ export class Recorder {
     /** @type {string|null} Blob URL of the last completed recording */
     this._lastRecordingURL = null;
 
+    /** @type {string} MIME type of the recorded output */
+    this.recordedMimeType = 'video/mp4';
+
     /** @type {boolean} */
     this.isRecording = false;
 
@@ -68,13 +69,11 @@ export class Recorder {
   /* ─── Public API ──────────────────────────────────────────────────────── */
 
   /**
-   * Begin recording. Requests microphone access (fails gracefully if denied).
-   * Resolves when the MediaRecorder has started.
-   *
+   * Begin recording with optional microphone selection.
+   * @param {string|null} [audioDeviceId=null] - Specific microphone device ID
    * @returns {Promise<void>}
-   * @throws Will reject if the canvas stream cannot be captured or no MIME type is supported
    */
-  async startRecording() {
+  async startRecording(audioDeviceId = null) {
     if (this.isRecording) {
       console.warn('[Recorder] Already recording.');
       return;
@@ -89,10 +88,13 @@ export class Recorder {
       throw new Error(`[Recorder] canvas.captureStream failed: ${err.message}`);
     }
 
-    // ── 2. Optional microphone audio track ──
+    // ── 2. Microphone audio track with device selection ──
     let micStream = null;
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const audioConstraints = audioDeviceId
+        ? { deviceId: { exact: audioDeviceId }, echoCancellation: true, noiseSuppression: true }
+        : { echoCancellation: true, noiseSuppression: true };
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
     } catch (_) {
       console.warn('[Recorder] Microphone not available — recording video only.');
     }
@@ -104,12 +106,19 @@ export class Recorder {
     }
     const combinedStream = new MediaStream(tracks);
 
-    // ── 4. Choose best supported MIME type ──
-    const mimeType = PREFERRED_MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+    // ── 4. Choose best supported MIME type (MP4 prioritized) ──
+    const mimeType = PREFERRED_MIME_TYPES.find((t) => {
+      try {
+        return MediaRecorder.isTypeSupported(t);
+      } catch {
+        return false;
+      }
+    }) || '';
     if (!mimeType) {
-      throw new Error('[Recorder] No supported video MIME type found in this browser.');
+      throw new Error('[Recorder] Nenhum formato de gravação de vídeo suportado neste navegador.');
     }
-    console.log(`[Recorder] Using MIME type: ${mimeType}`);
+    this.recordedMimeType = mimeType;
+    console.log(`[Recorder] Formato selecionado: ${mimeType}`);
 
     // ── 5. Create MediaRecorder ──
     this._chunks  = [];
@@ -164,7 +173,7 @@ export class Recorder {
       }
 
       this._mediaRecorder.onstop = () => {
-        const mimeType = this._mediaRecorder.mimeType || 'video/webm';
+        const mimeType = this._mediaRecorder.mimeType || this.recordedMimeType || 'video/mp4';
         const blob      = new Blob(this._chunks, { type: mimeType });
 
         // Revoke old URL to free memory
@@ -195,9 +204,9 @@ export class Recorder {
   /**
    * Trigger a file-system download of the last completed recording.
    *
-   * @param {string} [filename='face-capture.webm'] - Desired file name
+   * @param {string} [filename] - Desired file name
    */
-  downloadRecording(filename = 'face-capture.webm') {
+  downloadRecording(filename = `FaceToModel_${Date.now()}.mp4`) {
     if (!this._lastRecordingURL) {
       console.warn('[Recorder] No recording available to download.');
       return;

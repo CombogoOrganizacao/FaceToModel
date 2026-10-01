@@ -24,6 +24,7 @@ export class P2PClient {
     this.onBlendshapesReceived = null;
     this.onPeerJoinCallback = null;
     this.onPeerLeaveCallback = null;
+    this.onPeerStreamCallback = null;
     this.connectedPeers = new Set();
   }
 
@@ -76,6 +77,31 @@ export class P2PClient {
       this.room.onPeerLeave(handleLeave);
     } else {
       this.room.onPeerLeave = handleLeave;
+    }
+
+    const handleStream = (stream, peerId) => {
+      console.log(`[P2P] Vídeo recebido do peer: ${peerId}`);
+      if (this.onPeerStreamCallback) this.onPeerStreamCallback(stream, peerId);
+    };
+
+    if (typeof this.room.onPeerStream === 'function') {
+      this.room.onPeerStream(handleStream);
+    } else {
+      this.room.onPeerStream = handleStream;
+    }
+  }
+
+  /**
+   * Transmite o stream de vídeo da câmera para os peers conectados
+   * @param {MediaStream} stream
+   */
+  sendStream(stream) {
+    if (this.room && typeof this.room.addStream === 'function') {
+      try {
+        this.room.addStream(stream);
+      } catch (err) {
+        console.warn('[P2P] Erro ao enviar stream de vídeo:', err);
+      }
     }
   }
 
