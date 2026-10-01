@@ -23,15 +23,15 @@ import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 
 /** Default background colour matches the app's CSS variable --bg-base */
-const BG_COLOR = 0x0d0d1a;
+const BG_COLOR = 0x050508;
 
 /** Desirable FOV for a face close-up */
-const CAMERA_FOV = 30;
+const CAMERA_FOV = 32;
 
 /** Camera start position in model space */
-const CAMERA_Z = 2.5;
+const CAMERA_Z = 2.4;
 
-/* ─── Renderer ──────────────────────────────────────────────────────────── */
+/* ─── Renderer ──────────────────────────────────────────────────── */
 
 export class Renderer {
   /**
@@ -45,7 +45,7 @@ export class Renderer {
     this._renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
-      alpha: false,
+      alpha: true,
       powerPreference: 'high-performance',
     });
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -53,15 +53,15 @@ export class Renderer {
     this._renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
     this._renderer.outputColorSpace  = THREE.SRGBColorSpace;
     this._renderer.toneMapping       = THREE.ACESFilmicToneMapping;
-    this._renderer.toneMappingExposure = 1.0;
+    this._renderer.toneMappingExposure = 1.1;
 
     /* ── Scene ── */
     this._scene = new THREE.Scene();
-    this._scene.background = new THREE.Color(BG_COLOR);
-    this._scene.fog = new THREE.FogExp2(BG_COLOR, 0.04);
 
     /* ── Camera ── */
-    const aspect = canvas.clientWidth / canvas.clientHeight || 1;
+    const width = canvas.clientWidth || window.innerWidth || 800;
+    const height = canvas.clientHeight || window.innerHeight || 600;
+    const aspect = width / height;
     this._camera = new THREE.PerspectiveCamera(CAMERA_FOV, aspect, 0.01, 100);
     this._camera.position.set(0, 0, CAMERA_Z);
 
@@ -80,13 +80,18 @@ export class Renderer {
     this._controls.update();
 
     /* ── KTX2 & GLTF Loaders ── */
-    this._ktx2Loader = new KTX2Loader();
-    this._ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/libs/basis/');
-    this._ktx2Loader.detectSupport(this._renderer);
+    try {
+      this._ktx2Loader = new KTX2Loader();
+      this._ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/libs/basis/');
+      this._ktx2Loader.detectSupport(this._renderer);
 
-    this._loader = new GLTFLoader();
-    this._loader.setKTX2Loader(this._ktx2Loader);
-    this._loader.setMeshoptDecoder(MeshoptDecoder);
+      this._loader = new GLTFLoader();
+      this._loader.setKTX2Loader(this._ktx2Loader);
+      this._loader.setMeshoptDecoder(MeshoptDecoder);
+    } catch (e) {
+      console.warn('[Renderer] Fallback basic GLTFLoader:', e);
+      this._loader = new GLTFLoader();
+    }
 
     /* ── Clock ── */
     this._clock = new THREE.Clock();
@@ -123,13 +128,7 @@ export class Renderer {
 
     console.log(`[Renderer] Loading model: ${url}`);
 
-    const gltf = await this._loader.loadAsync(url, (progress) => {
-      if (progress.total) {
-        const pct = Math.round((progress.loaded / progress.total) * 100);
-        console.debug(`[Renderer] Load progress: ${pct}%`);
-      }
-    });
-
+    const gltf = await this._loader.loadAsync(url);
     const model = gltf.scene;
 
     // Centre and scale
@@ -142,7 +141,7 @@ export class Renderer {
     model.scale.setScalar(scale);
     model.position.sub(centre.multiplyScalar(scale));
 
-    // Shadows
+    // Enable shadows
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow    = true;
@@ -187,15 +186,6 @@ export class Renderer {
   }
 
   /**
-   * Show/hide scene background.
-   * @param {boolean} visible
-   */
-  setBackgroundVisible(visible) {
-    this._scene.background = visible ? new THREE.Color(BG_COLOR) : null;
-    this._scene.fog        = visible ? new THREE.FogExp2(BG_COLOR, 0.04) : null;
-  }
-
-  /**
    * Reset camera position.
    */
   resetCamera() {
@@ -222,22 +212,20 @@ export class Renderer {
   /* ─── Private ─────────────────────────────────────────────────────────── */
 
   _setupLighting() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
     this._scene.add(ambient);
 
-    const keyLight = new THREE.DirectionalLight(0xfff5e0, 1.8);
+    const keyLight = new THREE.DirectionalLight(0xfff5e0, 2.0);
     keyLight.position.set(1.5, 2.0, 2.0);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(1024, 1024);
-    keyLight.shadow.camera.near = 0.1;
-    keyLight.shadow.camera.far  = 20;
     this._scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0xd0e8ff, 0.8);
+    const fillLight = new THREE.DirectionalLight(0xd0e8ff, 1.0);
     fillLight.position.set(-2.0, 0.5, 1.5);
     this._scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xaa88ff, 0.6);
+    const rimLight = new THREE.DirectionalLight(0xaa88ff, 0.8);
     rimLight.position.set(0, 1.0, -2.0);
     this._scene.add(rimLight);
   }

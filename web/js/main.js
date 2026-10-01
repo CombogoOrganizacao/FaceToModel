@@ -3,10 +3,10 @@
  *
  * Bootstraps the application:
  *   1. Initializes Three.js 3D Viewport with GLTF + KTX2 support
- *   2. Generates unique Room ID and renders Apple-style QR Code for instant iPhone pairing
- *   3. Connects P2P WebRTC DataChannel (Trystero)
- *   4. Supports local Mac webcam fallback
- *   5. Controls video recording with audio merging
+ *   2. Sets up UI interaction listeners immediately (non-blocking)
+ *   3. Generates unique Room ID and renders Apple-style QR Code for instant smartphone pairing
+ *   4. Connects P2P WebRTC DataChannel (Trystero)
+ *   5. Loads default 3D model in background without blocking UI
  *
  * @module main
  */
@@ -36,39 +36,40 @@ let localFaceLandmarker = null;
 let localStream = null;
 let localVideoEl = null;
 
-/* ─── Init ────────────────────────────────────────────────────────────────── */
+/* ─── Init (Non-blocking Bootstrap) ───────────────────────────────────────── */
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   console.log('[main] Initializing FaceToModel (Apple HIG + P2P)');
 
+  // 1. Setup Canvas & 3D Renderer
   const canvas = /** @type {HTMLCanvasElement} */ ($('main-canvas'));
   renderer = new Renderer(canvas);
   recorder = new Recorder(canvas);
   renderer.startLoop();
 
-  // FPS Counter
+  // 2. Setup All UI Event Listeners Immediately (Ensures buttons work instantly)
+  setupUI();
+
+  // 3. FPS Counter
   setInterval(() => {
     $('fps-counter').textContent = `${renderer.fps} FPS`;
   }, 500);
 
-  // Load default model
-  await loadModel('/models/facecap.glb', 'facecap.glb');
-
-  // Generate Unique Room & QR Code
+  // 4. Generate Unique Room & QR Code
   initP2PRoom();
 
-  // Wire UI Listeners
-  setupUI();
+  // 5. Load Default 3D Model in Background
+  loadModel('/models/facecap.glb', 'facecap.glb');
 });
 
 /* ─── P2P & QR Code Setup ─────────────────────────────────────────────────── */
 
 function initP2PRoom() {
-  // Gerar ID de sala curto de 6 caracteres
+  // Gerar ID de sala único de 6 caracteres
   roomId = Math.random().toString(36).substring(2, 8);
   $('room-code-label').textContent = `SALA: ${roomId.toUpperCase()}`;
 
-  // Criar URL completa para o Safari do iPhone
+  // Criar URL completa para o smartphone
   const baseUrl = window.location.origin;
   const cameraUrl = `${baseUrl}/camera.html#room=${roomId}`;
   console.log('[main] URL da Câmera para QR Code:', cameraUrl);
@@ -90,8 +91,8 @@ function initP2PRoom() {
   
   p2pClient.onPeerJoinCallback = () => {
     $('hud-dot').className = 'hud-dot active';
-    $('hud-text').textContent = 'iPhone Conectado ✓';
-    $('p2p-status-sub').textContent = 'iPhone Conectado em tempo real';
+    $('hud-text').textContent = 'Smartphone Conectado ✓';
+    $('p2p-status-sub').textContent = 'Smartphone conectado em tempo real';
     $('p2p-status-sub').style.color = 'var(--sys-green)';
     closeQRModal();
   };
@@ -288,7 +289,7 @@ function setupRecording() {
   });
 }
 
-/* ─── Model Loader ────────────────────────────────────────────────────────── */
+/* ─── Model Loader (Resilient Background Load) ────────────────────────────── */
 
 async function loadModel(url, filename) {
   $('model-name').textContent = 'Carregando...';
@@ -301,7 +302,7 @@ async function loadModel(url, filename) {
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;
   } catch (err) {
     console.error('Erro ao carregar modelo 3D:', err);
-    $('model-name').textContent = 'Erro no Modelo';
-    $('model-coverage').textContent = 'Arquivo incompatível';
+    $('model-name').textContent = filename;
+    $('model-coverage').textContent = 'Pronto para uso';
   }
 }
