@@ -80,17 +80,23 @@ export class Renderer {
     this._controls.update();
 
     /* ── KTX2 & GLTF Loaders ── */
+    this._loader = new GLTFLoader();
+
     try {
       this._ktx2Loader = new KTX2Loader();
       this._ktx2Loader.setTranscoderPath('/libs/basis/');
       this._ktx2Loader.detectSupport(this._renderer);
-
-      this._loader = new GLTFLoader();
       this._loader.setKTX2Loader(this._ktx2Loader);
-      this._loader.setMeshoptDecoder(MeshoptDecoder);
     } catch (e) {
-      console.warn('[Renderer] Fallback basic GLTFLoader:', e);
-      this._loader = new GLTFLoader();
+      console.warn('[Renderer] KTX2Loader indisponível:', e);
+    }
+
+    try {
+      if (typeof MeshoptDecoder !== 'undefined') {
+        this._loader.setMeshoptDecoder(MeshoptDecoder);
+      }
+    } catch (e) {
+      console.warn('[Renderer] MeshoptDecoder indisponível:', e);
     }
 
     /* ── Clock ── */

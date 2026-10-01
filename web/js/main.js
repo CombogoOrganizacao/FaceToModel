@@ -14,7 +14,6 @@
  * @module main
  */
 
-import { Renderer } from './renderer.js';
 import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
 
@@ -60,7 +59,7 @@ let localVideoEl = null;
 function bootstrap() {
   console.log('[main] Initializing FaceToModel (Apple HIG + P2P)');
 
-  // 1. Setup UI event listeners FIRST (guarantees buttons always work)
+  // 1. Setup UI event listeners FIRST (guarantees buttons always work immediately)
   try {
     setupUI();
     setupDragAndDrop();
@@ -75,8 +74,13 @@ function bootstrap() {
     console.error('[main] Erro ao inicializar P2P:', p2pErr);
   }
 
-  // 3. Setup Canvas & 3D WebGL Renderer
+  // 3. Setup Canvas & 3D WebGL Renderer (dynamic import for bulletproof browser compatibility)
+  init3DEngine();
+}
+
+async function init3DEngine() {
   try {
+    const { Renderer } = await import('./renderer.js');
     const canvas = /** @type {HTMLCanvasElement} */ ($('main-canvas'));
     renderer = new Renderer(canvas);
     recorder = new Recorder(canvas);
@@ -94,7 +98,7 @@ function bootstrap() {
     loadModel('/models/facecap.glb', 'facecap.glb');
   } catch (renderErr) {
     console.error('[main] Erro ao inicializar Renderer 3D:', renderErr);
-    showToast('Aviso: Inicializando acelerador 3D...', 'info');
+    showToast('Aviso ao iniciar acelerador 3D: ' + renderErr.message, 'error');
   }
 }
 
