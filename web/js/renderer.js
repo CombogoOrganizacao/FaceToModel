@@ -24,8 +24,6 @@ import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
-import { createMarschnerHairMaterial } from './shaders/hair-shader.js';
-import { generateHairFlowMap } from './hair-atlas-generator.js';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 
@@ -240,36 +238,45 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 2. Fios de Cabelo do MetaHuman (Unreal Engine 5 Marschner Dual-Lobe Anisotropic Hair Shader)
+            // 2. Fios de Cabelo do MetaHuman (MeshPhysicalMaterial com Anisotropia Fina, Sheen de Melanina e Alpha de Fios)
             else if (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow'))) {
               const alphaMap = m.map ? this._synthesizeAlphaFromTexture(m.map) : (m.alphaMap || null);
-              const flowMap = generateHairFlowMap(512);
-              const hairMat = createMarschnerHairMaterial({
+              const hairMat = new THREE.MeshPhysicalMaterial({
+                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
                 map: m.map || null,
                 alphaMap: alphaMap,
-                flowMap: flowMap,
-                color: new THREE.Color(0x281912), // Deep natural dark hair
-                melaninColor: new THREE.Color(0x8c5228), // Rich melanin golden-brown specular
-                roughness: 0.32,
-                specularR: 0.95,
-                specularTRT: 1.35,
-                transmissionTT: 0.75,
-                alphaTest: 0.18,
-                envMap: this._envMap,
+                normalMap: m.normalMap || null,
+                roughness: 0.46, // Acabamento acetinado orgânico (sem aspecto metálico ou plástico)
+                metalness: 0.0,  // Estritamente dielétrico não-metálico
+                specularIntensity: 0.35, // Reflectância física de 4% (F0 = 0.04)
+                anisotropy: 0.75, // Destaque anisotrópico ao longo dos fios
+                anisotropyRotation: Math.PI / 2,
+                sheen: 0.55, // Brilho suave de melanina
+                sheenColor: new THREE.Color(0x54321c), // Tom quente de melanina
+                sheenRoughness: 0.45,
+                transparent: true,
+                alphaTest: 0.20,
+                depthWrite: true,
+                depthTest: true,
+                alphaToCoverage: true,
+                side: THREE.DoubleSide,
                 name: m.name,
               });
-              this._syncHairUniforms(hairMat);
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.6;
               return hairMat;
             }
-            // 3. Sobrancelhas (Eyebrows — polygonOffset para eliminar Z-fighting e Alpha Sintetizado)
+            // 3. Sobrancelhas (Eyebrows — polygonOffset para eliminar Z-fighting e Alpha Sintetizado de Fios)
             else if (matName.includes('eyebrow')) {
               const alphaMap = m.map ? this._synthesizeAlphaFromTexture(m.map) : (m.alphaMap || null);
               const browMat = new THREE.MeshPhysicalMaterial({
                 color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
                 map: m.map || null,
                 alphaMap: alphaMap,
-                roughness: 0.45,
+                roughness: 0.48,
                 metalness: 0.0,
+                specularIntensity: 0.30,
+                sheen: 0.4,
+                sheenColor: new THREE.Color(0x482a16),
                 transparent: true,
                 alphaTest: 0.22,
                 depthWrite: true,
@@ -281,20 +288,23 @@ export class Renderer {
                 side: THREE.DoubleSide,
                 name: m.name,
               });
+              if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.5;
               return browMat;
             }
-            // 4. Cílios (Eyelashes / LashMat — Atlas Procedural Realista com fios afilados e umidade natural)
+            // 4. Cílios (Eyelashes / LashMat — Atlas Procedural Realista de Fios Afilados e Umidade Suave)
             else if (matName.includes('eyelashes') || matName.includes('lashmat')) {
               const lashTex = this._createProceduralEyelashTextures();
               const lashMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x160e0a),
+                color: new THREE.Color(0x18100c),
                 map: lashTex.map,
                 alphaMap: lashTex.alphaMap,
-                roughness: 0.22,
+                roughness: 0.38,
                 metalness: 0.0,
-                specularIntensity: 0.85,
+                specularIntensity: 0.45,
+                sheen: 0.35,
+                sheenColor: new THREE.Color(0x382214),
                 transparent: true,
-                alphaTest: 0.2,
+                alphaTest: 0.20,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -304,6 +314,7 @@ export class Renderer {
                 side: THREE.DoubleSide,
                 name: m.name,
               });
+              if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.6;
               return lashMat;
             }
             // 5. Roupas e Tecidos
@@ -744,9 +755,6 @@ export class Renderer {
       case 'cyber':
       default: {
         if (orig.wireframe !== undefined) orig.wireframe = false;
-        if (orig.uniforms) {
-          this._syncHairUniforms(orig);
-        }
         return orig;
       }
     }
@@ -788,43 +796,6 @@ export class Renderer {
     const z = dist * Math.cos(radElev) * Math.cos(radAzimuth);
 
     this._keyLight.position.set(x, y, z);
-
-    // Sync Marschner Hair materials with current light vectors
-    if (this._model) {
-      this._model.traverse((node) => {
-        if (node.isMesh && node.material) {
-          const mats = Array.isArray(node.material) ? node.material : [node.material];
-          mats.forEach((m) => this._syncHairUniforms(m));
-        }
-      });
-    }
-  }
-
-  /**
-   * Synchronizes scene lights and environment uniforms with Marschner Hair Shader materials.
-   * @param {THREE.Material} mat
-   */
-  _syncHairUniforms(mat) {
-    if (!mat || !mat.uniforms || !this._keyLight) return;
-    if (mat.uniforms.uKeyLightColor) {
-      mat.uniforms.uKeyLightColor.value.copy(this._keyLight.color).multiplyScalar(this._keyLight.intensity);
-      mat.uniforms.uKeyLightDir.value.copy(this._keyLight.position).normalize();
-    }
-    if (mat.uniforms.uFillLightColor && this._fillLight) {
-      mat.uniforms.uFillLightColor.value.copy(this._fillLight.color).multiplyScalar(this._fillLight.intensity);
-      mat.uniforms.uFillLightDir.value.copy(this._fillLight.position).normalize();
-    }
-    if (mat.uniforms.uRimLightColor && this._rimLight) {
-      mat.uniforms.uRimLightColor.value.copy(this._rimLight.color).multiplyScalar(this._rimLight.intensity);
-      mat.uniforms.uRimLightDir.value.copy(this._rimLight.position).normalize();
-    }
-    if (mat.uniforms.uAmbientColor && this._ambientLight) {
-      mat.uniforms.uAmbientColor.value.copy(this._ambientLight.color).multiplyScalar(this._ambientLight.intensity);
-    }
-    if (mat.uniforms.uEnvMap && this._envMap) {
-      mat.uniforms.uEnvMap.value = this._envMap;
-      mat.uniforms.uHasEnvMap.value = true;
-    }
   }
 
   /**
