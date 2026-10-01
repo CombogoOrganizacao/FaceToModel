@@ -60,20 +60,21 @@
     /* Face Framing Reticle Apple Style */
     .face-reticle {
       position: absolute;
-      top: 48%;
+      top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 230px;
-      height: 310px;
-      border: 1.5px dashed rgba(255, 255, 255, 0.25);
-      border-radius: 50% 50% 45% 45%;
+      width: 140px;
+      height: 180px;
+      border: 1.5px dashed rgba(255, 255, 255, 0.35);
+      border-radius: 50%;
       pointer-events: none;
       z-index: 5;
-      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+      will-change: transform, left, top, width, height;
     }
     .face-reticle.active {
       border: 2px solid var(--sys-green);
-      box-shadow: 0 0 24px rgba(48, 209, 88, 0.25), inset 0 0 16px rgba(48, 209, 88, 0.15);
+      box-shadow: 0 0 20px rgba(48, 209, 88, 0.35), inset 0 0 12px rgba(48, 209, 88, 0.15);
     }
 
     /* Top HUD Apple Style */
@@ -172,7 +173,7 @@
   <div class="top-hud">
     <div class="pill-badge">
       <div class="pill-dot" id="p2p-dot"></div>
-      <span id="p2p-label">Conectando ao Mac...</span>
+      <span id="p2p-label">Conectando...</span>
     </div>
     
     <div class="pill-badge" style="font-family: var(--font-mono); font-size: 11px;">
@@ -246,11 +247,11 @@
       p2pClient = new P2PClient(roomHash, false);
       p2pClient.onPeerJoinCallback = () => {
         p2pDot.className = 'pill-dot connected';
-        p2pLabel.textContent = 'Conectado ao Mac ✓';
+        p2pLabel.textContent = 'Conectado ✓';
       };
       p2pClient.onPeerLeaveCallback = () => {
         p2pDot.className = 'pill-dot';
-        p2pLabel.textContent = 'Mac desconectado';
+        p2pLabel.textContent = 'Desconectado';
       };
       p2pClient.connect();
 
@@ -335,6 +336,9 @@
     }
   }
 
+  // Smooth Reticle Tracking EMA
+  let smoothBox = { x: 50, y: 50, w: 35, h: 45 };
+
   function predictLoop() {
     if (video.currentTime !== lastVideoTime && faceLandmarker && video.readyState >= 2) {
       lastVideoTime = video.currentTime;
@@ -344,6 +348,36 @@
         faceTrackingStatus.textContent = 'Rastreamento: Ativo ✓';
         faceTrackingStatus.style.color = 'var(--sys-green)';
         if (faceReticle) faceReticle.classList.add('active');
+
+        // Bounding box dinâmico a partir dos landmarks faciais
+        if (results.faceLandmarks && results.faceLandmarks.length > 0 && faceReticle) {
+          const landmarks = results.faceLandmarks[0];
+          let minX = 1, maxX = 0, minY = 1, maxY = 0;
+          for (let i = 0; i < landmarks.length; i++) {
+            const lm = landmarks[i];
+            if (lm.x < minX) minX = lm.x;
+            if (lm.x > maxX) maxX = lm.x;
+            if (lm.y < minY) minY = lm.y;
+            if (lm.y > maxY) maxY = lm.y;
+          }
+
+          // Inverter X pois o vídeo está espelhado com scaleX(-1)
+          const targetCenterX = (1 - (minX + maxX) / 2) * 100;
+          const targetCenterY = ((minY + maxY) / 2) * 100;
+          const targetWidth = Math.max(18, Math.min(65, (maxX - minX) * 125));
+          const targetHeight = Math.max(22, Math.min(80, (maxY - minY) * 130));
+
+          // Suavização EMA
+          smoothBox.x += (targetCenterX - smoothBox.x) * 0.35;
+          smoothBox.y += (targetCenterY - smoothBox.y) * 0.35;
+          smoothBox.w += (targetWidth - smoothBox.w) * 0.35;
+          smoothBox.h += (targetHeight - smoothBox.h) * 0.35;
+
+          faceReticle.style.left = `${smoothBox.x}%`;
+          faceReticle.style.top = `${smoothBox.y}%`;
+          faceReticle.style.width = `${smoothBox.w}vw`;
+          faceReticle.style.height = `${smoothBox.h}vh`;
+        }
 
         const blendShapesMap = {};
         for (const shape of results.faceBlendshapes[0].categories) {
@@ -368,7 +402,14 @@
       } else {
         faceTrackingStatus.textContent = 'Aponte o rosto para a câmera';
         faceTrackingStatus.style.color = 'rgba(235,235,245,0.6)';
-        if (faceReticle) faceReticle.classList.remove('active');
+        if (faceReticle) {
+          faceReticle.classList.remove('active');
+          // Retornar suavemente ao centro
+          smoothBox.x += (50 - smoothBox.x) * 0.1;
+          smoothBox.y += (50 - smoothBox.y) * 0.1;
+          faceReticle.style.left = `${smoothBox.x}%`;
+          faceReticle.style.top = `${smoothBox.y}%`;
+        }
       }
 
       frameCount++;
