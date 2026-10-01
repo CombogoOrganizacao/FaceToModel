@@ -266,6 +266,14 @@
 <!-- Toast Container Apple HIG -->
 <div class="toast-container" id="toast-container"></div>
 
+<script>
+window.addEventListener('error', function(e) {
+  console.error('[FaceToModel Error]', e.message, e.filename, e.lineno);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[FaceToModel Promise Error]', e.reason);
+});
+</script>
 <script type="module" src="/js/main.js"></script>
 </body>
 </html>

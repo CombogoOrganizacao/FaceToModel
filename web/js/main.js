@@ -60,29 +60,42 @@ let localVideoEl = null;
 function bootstrap() {
   console.log('[main] Initializing FaceToModel (Apple HIG + P2P)');
 
-  // 1. Setup Canvas & 3D Renderer
-  const canvas = /** @type {HTMLCanvasElement} */ ($('main-canvas'));
-  renderer = new Renderer(canvas);
-  recorder = new Recorder(canvas);
-  renderer.startLoop();
+  // 1. Setup UI event listeners FIRST (guarantees buttons always work)
+  try {
+    setupUI();
+    setupDragAndDrop();
+  } catch (uiErr) {
+    console.error('[main] Erro ao registrar UI:', uiErr);
+  }
 
-  // 2. Setup All UI Event Listeners Immediately
-  setupUI();
-  setupDragAndDrop();
-  startInspectorLoop();
+  // 2. Setup P2P & QR Code (runs independently of 3D)
+  try {
+    initP2PRoom();
+  } catch (p2pErr) {
+    console.error('[main] Erro ao inicializar P2P:', p2pErr);
+  }
 
-  // 3. FPS Counter
-  setInterval(() => {
-    if (renderer) {
-      $('fps-counter').textContent = `${renderer.fps} FPS`;
-    }
-  }, 500);
+  // 3. Setup Canvas & 3D WebGL Renderer
+  try {
+    const canvas = /** @type {HTMLCanvasElement} */ ($('main-canvas'));
+    renderer = new Renderer(canvas);
+    recorder = new Recorder(canvas);
+    renderer.startLoop();
+    startInspectorLoop();
 
-  // 4. Generate Unique Room & QR Code
-  initP2PRoom();
+    // 4. FPS Counter
+    setInterval(() => {
+      if (renderer) {
+        $('fps-counter').textContent = `${renderer.fps} FPS`;
+      }
+    }, 500);
 
-  // 5. Load Default 3D Model in Background
-  loadModel('/models/facecap.glb', 'facecap.glb');
+    // 5. Load Default 3D Model in Background
+    loadModel('/models/facecap.glb', 'facecap.glb');
+  } catch (renderErr) {
+    console.error('[main] Erro ao inicializar Renderer 3D:', renderErr);
+    showToast('Aviso: Inicializando acelerador 3D...', 'info');
+  }
 }
 
 if (document.readyState === 'loading') {
@@ -186,10 +199,10 @@ function setupUI() {
 
   // Controles de Visualização
   $('chk-wireframe').addEventListener('change', (e) => {
-    renderer.setWireframe(e.target.checked);
+    if (renderer) renderer.setWireframe(e.target.checked);
   });
   $('btn-reset-view').addEventListener('click', () => {
-    renderer.resetCamera();
+    if (renderer) renderer.resetCamera();
     showToast('Câmera redefinida', 'info');
   });
 
@@ -373,6 +386,10 @@ function setupRecording() {
   let currentVideoUrl = null;
 
   shutter.addEventListener('click', async () => {
+    if (!recorder) {
+      showToast('Acelerador 3D inicializando...', 'info');
+      return;
+    }
     if (!recorder.isRecording) {
       try {
         await recorder.startRecording();
