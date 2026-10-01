@@ -230,21 +230,26 @@ export class Renderer {
 
             const matName = (m.name || '').toLowerCase();
 
-            // 1. Pele / Cabeça / Corpo do MetaHuman (eliminar efeito plástico/glossy excessivo)
+            // 1. Pele / Cabeça / Corpo do MetaHuman e Avatares PBR
             if (matName.includes('head_shader') || matName.includes('body_mi') || matName.includes('skin') || matName.includes('face')) {
               m.roughness = 0.58; // Rugosidade natural de pele humana (micro-textura)
               m.metalness = 0.0;
               if (m.specularIntensity !== undefined) m.specularIntensity = 0.35;
-              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45; // Suaviza reflexo IBL sobre a pele
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
             }
-            // 2. Cabelo / Barba / Cartas de Pelo
-            else if (matName.includes('hair') || matName.includes('cards_m')) {
-              m.roughness = 0.65; // Cabelo sem brilho plástico
+            // 2. Cabelo / Barba / Cartas de Pelo / Eyebrows / Eyelashes (AlphaTest para nitidez sem descolamento)
+            else if (matName.includes('hair') || matName.includes('cards_m') || matName.includes('eyebrow') || matName.includes('eyelashes') || matName.includes('lashmat') || matName.includes('cardmat')) {
+              m.transparent = true;
+              m.alphaTest = 0.35;
+              m.depthWrite = true;
+              m.depthTest = true;
+              m.roughness = 0.65;
               m.metalness = 0.0;
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.3;
+              m.needsUpdate = true;
             }
             // 3. Roupas e Tecidos
-            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth')) {
+            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit')) {
               m.roughness = 0.85; // Tecido fosco
               m.metalness = 0.0;
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.2;
@@ -254,15 +259,15 @@ export class Renderer {
               m.roughness = 0.28;
               m.metalness = 0.0;
             }
-            // 5. Camadas Oclusoras dos Olhos (desativar para não turvar)
-            else if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage')) {
+            // 5. Camadas Oclusoras dos Olhos / Hidden Shells (desativar para não cobrir o globo ocular)
+            else if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage') || matName.includes('m_hide') || matName.includes('lacrimal')) {
               m.transparent = true;
               m.opacity = 0.0;
               m.depthWrite = false;
               m.visible = false;
             }
             // 6. Globo Ocular / Íris / Esclera
-            else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball')) {
+            else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball') || matName.includes('eyel_baked') || matName.includes('eyer_baked')) {
               m.roughness = 0.12; // Córnea nítida com reflexo especular equilibrado
               m.metalness = 0.0;
               m.transparent = false;
@@ -271,22 +276,10 @@ export class Renderer {
               if (m.color) m.color.setHex(0xffffff);
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.2;
             }
-            // 7. Cílios e Sobrancelhas
-            else if (matName.includes('eyelashes') || matName.includes('eyebrow')) {
-              m.transparent = true;
-              m.depthWrite = true;
-              m.alphaTest = 0.45;
-              m.roughness = 0.7;
-            }
           });
         }
       }
     });
-
-    // Fix models that are authored facing away (+Z forward vs -Z forward)
-    if (lowerName.includes('anime') || lowerName.includes('vrm')) {
-      model.rotation.y = Math.PI;
-    }
 
     // Centre and scale: if full-body model, frame specifically on the head/face
     const fullBox = new THREE.Box3().setFromObject(model);
@@ -319,19 +312,18 @@ export class Renderer {
 
     const targetDim = isFullBody ? Math.max(size.x, size.y) * 1.5 : Math.max(fullSize.x, fullSize.y, fullSize.z);
     const scale  = 1.0 / (targetDim || 1);
+
+    // Create a unified Pivot container for harmonious 3DoF head rotation without detached hair
+    const pivotGroup = new THREE.Group();
+    pivotGroup.name = 'FaceToModel_Pivot';
+
     model.scale.setScalar(scale);
     model.position.sub(centre.multiplyScalar(scale));
+    pivotGroup.add(model);
 
-    // Detect head bone if present (humanoid/ReadyPlayerMe models)
-    this._headBone = null;
-    model.traverse((node) => {
-      if (!this._headBone && (node.isBone || node.type === 'Bone') && /(head|c_head|neck)/i.test(node.name)) {
-        this._headBone = node;
-      }
-    });
-
-    this._scene.add(model);
-    this._model = model;
+    this._scene.add(pivotGroup);
+    this._model = pivotGroup;
+    this._innerModel = model;
 
     // Reset rotation targets
     this._targetRotation = { x: 0, y: 0, z: 0 };
@@ -354,7 +346,7 @@ export class Renderer {
     this.setTexturesEnabled(this._showTextures);
 
     this.resetCamera();
-    console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 (HeadBone: ${this._headBone ? this._headBone.name : 'root'})`);
+    console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 blendshapes`);
     return model;
   }
 
@@ -538,73 +530,137 @@ export class Renderer {
 
     if (!this._model) return;
 
-    // Apply materials
+    // Apply materials non-destructively preserving alpha cutouts and transparency
     this._model.traverse((node) => {
       if (node.isMesh) {
         const orig = node.userData.originalMaterial;
         if (!orig) return;
-
-        if (mode === 'clay') {
-          if (!node.userData.clayMaterial) {
-            node.userData.clayMaterial = new THREE.MeshStandardMaterial({
-              color: 0xccbba8,
-              roughness: 0.65,
-              metalness: 0.05,
-              flatShading: false,
-            });
-          }
-          node.material = node.userData.clayMaterial;
-          node.material.wireframe = false;
-        } else if (mode === 'normals') {
-          if (!node.userData.normalMaterial) {
-            node.userData.normalMaterial = new THREE.MeshNormalMaterial({
-              flatShading: false,
-            });
-          }
-          node.material = node.userData.normalMaterial;
-          node.material.wireframe = false;
-        } else if (mode === 'toon') {
-          if (!node.userData.toonMaterial) {
-            const baseMat = Array.isArray(orig) ? orig[0] : orig;
-            node.userData.toonMaterial = new THREE.MeshToonMaterial({
-              color: (baseMat && baseMat.color) ? baseMat.color.clone() : new THREE.Color(0xffffff),
-              map: (baseMat && baseMat.map) ? baseMat.map : null,
-              wireframe: false,
-            });
-          }
-          node.material = node.userData.toonMaterial;
-          node.material.wireframe = false;
-        } else if (mode === 'smooth') {
-          // Non-destructive smooth wrap without modifying geometry normals
-          if (!node.userData.smoothMaterial) {
-            const baseMat = Array.isArray(orig) ? orig[0] : orig;
-            node.userData.smoothMaterial = new THREE.MeshStandardMaterial({
-              color: (baseMat && baseMat.color) ? baseMat.color.clone() : new THREE.Color(0xffffff),
-              map: (baseMat && baseMat.map) ? baseMat.map : null,
-              roughness: 0.45 + (this._smoothLevel * 0.5),
-              metalness: 0.02,
-              wireframe: false,
-            });
-          } else {
-            node.userData.smoothMaterial.roughness = 0.45 + (this._smoothLevel * 0.5);
-          }
-          node.material = node.userData.smoothMaterial;
-          node.material.wireframe = false;
-        } else if (mode === 'wireframe') {
-          node.material = orig;
-          const mats = Array.isArray(node.material) ? node.material : [node.material];
-          mats.forEach((m) => { m.wireframe = true; });
-        } else {
-          // Restore original material
-          node.material = orig;
-          const mats = Array.isArray(node.material) ? node.material : [node.material];
-          mats.forEach((m) => { m.wireframe = false; });
-        }
+        node.material = this._getShaderMaterial(orig, mode, node);
       }
     });
 
     // Reapply user's light direction
     this._updateLightPosition();
+  }
+
+  /**
+   * Helper to produce a shader-mode specific material while strictly preserving
+   * transparency, alphaCutout maps, opacity, doubleSided properties and hidden layers.
+   * Prevents eye highlights, eyelashes, and decals from turning into solid black rectangles.
+   *
+   * @param {THREE.Material|THREE.Material[]} orig
+   * @param {string} mode
+   * @param {THREE.Mesh} node
+   * @returns {THREE.Material|THREE.Material[]}
+   */
+  _getShaderMaterial(orig, mode, node) {
+    if (!orig) return orig;
+    if (Array.isArray(orig)) {
+      return orig.map((m) => this._getShaderMaterial(m, mode, node));
+    }
+
+    // 1. Layers that must remain invisible / occlusion shells (e.g. MetaHuman eyeshell / saliva / hide)
+    if (orig.visible === false || orig.opacity === 0) {
+      return orig;
+    }
+    const matName = (orig.name || '').toLowerCase();
+    const isHiddenOccluder = matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage') || matName.includes('m_hide') || matName.includes('lacrimal');
+    if (isHiddenOccluder) {
+      return orig;
+    }
+
+    // 2. Detect if material relies on alpha cutout (eyelashes, hair cards, eye highlights, decals)
+    const isAlpha = Boolean(
+      orig.transparent ||
+      (orig.alphaTest && orig.alphaTest > 0) ||
+      orig.alphaMap ||
+      matName.includes('lash') ||
+      matName.includes('hair') ||
+      matName.includes('brow') ||
+      matName.includes('card') ||
+      matName.includes('alpha') ||
+      matName.includes('decal')
+    );
+
+    const baseAlphaTest = orig.alphaTest > 0 ? orig.alphaTest : (isAlpha ? 0.35 : 0);
+    const baseSide = orig.side || THREE.DoubleSide;
+
+    switch (mode) {
+      case 'toon': {
+        const mat = new THREE.MeshToonMaterial({
+          color: orig.color ? orig.color.clone() : new THREE.Color(0xffffff),
+          map: orig.map || null,
+          alphaMap: orig.alphaMap || null,
+          transparent: isAlpha || Boolean(orig.transparent),
+          alphaTest: baseAlphaTest,
+          side: baseSide,
+          depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
+          depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          wireframe: false,
+        });
+        return mat;
+      }
+
+      case 'smooth': {
+        const mat = new THREE.MeshStandardMaterial({
+          color: orig.color ? orig.color.clone() : new THREE.Color(0xffffff),
+          map: orig.map || null,
+          alphaMap: orig.alphaMap || null,
+          transparent: isAlpha || Boolean(orig.transparent),
+          alphaTest: baseAlphaTest,
+          side: baseSide,
+          depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
+          depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          roughness: 0.45 + (this._smoothLevel * 0.5),
+          metalness: 0.02,
+          wireframe: false,
+        });
+        return mat;
+      }
+
+      case 'clay': {
+        const mat = new THREE.MeshStandardMaterial({
+          color: isAlpha ? (orig.color ? orig.color.clone() : new THREE.Color(0xffffff)) : new THREE.Color(0xccbba8),
+          map: isAlpha ? (orig.map || null) : null,
+          alphaMap: orig.alphaMap || null,
+          transparent: isAlpha || Boolean(orig.transparent),
+          alphaTest: baseAlphaTest,
+          side: baseSide,
+          depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
+          depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          roughness: 0.65,
+          metalness: 0.05,
+          wireframe: false,
+        });
+        return mat;
+      }
+
+      case 'normals': {
+        const mat = new THREE.MeshNormalMaterial({
+          transparent: isAlpha || Boolean(orig.transparent),
+          alphaTest: baseAlphaTest,
+          side: baseSide,
+          depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
+          depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          wireframe: false,
+        });
+        return mat;
+      }
+
+      case 'wireframe': {
+        if (orig.wireframe !== undefined) orig.wireframe = true;
+        return orig;
+      }
+
+      case 'unreal':
+      case 'studio':
+      case 'sunset':
+      case 'cyber':
+      default: {
+        if (orig.wireframe !== undefined) orig.wireframe = false;
+        return orig;
+      }
+    }
   }
 
   /**
@@ -659,9 +715,7 @@ export class Renderer {
       const rx = rotation.pitch || 0;
       const ry = rotation.yaw || 0;
       const rz = rotation.roll || 0;
-      if (this._headBone) {
-        this._headBone.rotation.set(rx, ry, rz);
-      } else if (this._model) {
+      if (this._model) {
         this._model.rotation.set(rx, ry, rz);
       }
     }
@@ -754,9 +808,7 @@ export class Renderer {
     this._currentRotation.y += (this._targetRotation.y - this._currentRotation.y) * rotAlpha;
     this._currentRotation.z += (this._targetRotation.z - this._currentRotation.z) * rotAlpha;
 
-    if (this._headBone) {
-      this._headBone.rotation.set(this._currentRotation.x, this._currentRotation.y, this._currentRotation.z);
-    } else if (this._model) {
+    if (this._model) {
       this._model.rotation.set(this._currentRotation.x, this._currentRotation.y, this._currentRotation.z);
     }
 
