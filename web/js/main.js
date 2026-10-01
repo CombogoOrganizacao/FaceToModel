@@ -295,21 +295,18 @@ function setupAccordions() {
 /* ─── Model Presets (Padrão, Anime, Realista, Estilizado, Furry) ──────────── */
 
 function setupModelPresets() {
-  const pills = document.querySelectorAll('.model-preset-pill');
-  pills.forEach((pill) => {
-    pill.addEventListener('click', async () => {
-      pills.forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
+  const selectPreset = /** @type {HTMLSelectElement} */ ($('select-model-preset'));
+  if (!selectPreset) return;
 
-      const url = pill.getAttribute('data-url');
-      const modelKey = pill.getAttribute('data-model') || '';
-      const filename = url ? url.split('/').pop() : 'model.glb';
+  selectPreset.addEventListener('change', async () => {
+    const url = selectPreset.value;
+    const optText = selectPreset.selectedOptions[0]?.textContent || 'Modelo';
+    const filename = url ? url.split('/').pop() : 'model.glb';
 
-      if (url && renderer) {
-        showToast(`Carregando modelo ${pill.querySelector('.model-pill-text')?.textContent || modelKey}...`, 'info');
-        await loadModel(url, filename);
-      }
-    });
+    if (url && renderer) {
+      showToast(`Carregando modelo ${optText}...`, 'info');
+      await loadModel(url, filename);
+    }
   });
 }
 
@@ -602,9 +599,6 @@ function setupUI() {
 
   // Câmera Local
   $('btn-toggle-local-cam').addEventListener('click', () => toggleLocalCamera());
-
-  // Gravação de Vídeo em MP4
-  setupRecording();
 }
 
 function openQRModal() {
@@ -809,84 +803,7 @@ function runLocalLoop() {
 
 /* ─── Recording in Native MP4 with Preview Modal ─────────────────────────── */
 
-function setupRecording() {
-  const shutter = $('btn-shutter');
-  const label = $('record-label');
-  const timer = $('record-timer');
-  const canvas = $('main-canvas');
-  const previewModal = $('modal-video-preview');
-  const videoPlayer = /** @type {HTMLVideoElement} */ ($('preview-video-player'));
-  const btnSave = $('btn-save-recording');
-  const btnDiscard = $('btn-discard-recording');
-  const durationLabel = $('preview-duration-label');
 
-  let currentVideoUrl = null;
-
-  shutter.addEventListener('click', async () => {
-    if (!recorder) {
-      showToast('Acelerador 3D inicializando...', 'info');
-      return;
-    }
-    if (!recorder.isRecording) {
-      try {
-        await recorder.startRecording(selectedAudioDeviceId);
-        if (motionTimeline && !motionTimeline.isRecording) {
-          motionTimeline.startRecording();
-        }
-        shutter.classList.add('recording');
-        label.textContent = 'Parar Gravação';
-        showToast('Gravação em MP4 iniciada', 'info');
-      } catch (err) {
-        showToast('Erro ao iniciar gravação: ' + err.message, 'error');
-      }
-    } else {
-      if (motionTimeline && motionTimeline.isRecording) {
-        motionTimeline.stop();
-      }
-      const url = await recorder.stopRecording();
-      shutter.classList.remove('recording');
-      label.textContent = 'Gravar em MP4';
-      const dur = timer.textContent;
-      timer.textContent = '';
-
-      if (url) {
-        currentVideoUrl = url;
-        videoPlayer.src = url;
-        durationLabel.textContent = dur || '00:00';
-        previewModal.classList.add('open');
-        videoPlayer.play().catch(() => {});
-      }
-    }
-  });
-
-  canvas.addEventListener('durationupdate', (e) => {
-    timer.textContent = formatDuration(e.detail.seconds);
-  });
-
-  btnSave.addEventListener('click', () => {
-    if (currentVideoUrl) {
-      recorder.downloadRecording(`FaceToModel_Gravacao_${Date.now()}.mp4`);
-      showToast('Download do vídeo MP4 concluído!', 'success');
-    }
-    previewModal.classList.remove('open');
-    videoPlayer.pause();
-  });
-
-  btnDiscard.addEventListener('click', () => {
-    previewModal.classList.remove('open');
-    videoPlayer.pause();
-    videoPlayer.src = '';
-    currentVideoUrl = null;
-    showToast('Gravação descartada', 'info');
-  });
-
-  previewModal.addEventListener('click', (e) => {
-    if (e.target === previewModal) {
-      previewModal.classList.remove('open');
-      videoPlayer.pause();
-    }
-  });
-}
 
 /* ─── Blender-Style Bottom Motion Timeline ────────────────────────────────── */
 
@@ -1018,10 +935,15 @@ function setupTimeline() {
       return;
     }
 
+    const previewModal = $('modal-video-preview');
+    const videoPlayer = /** @type {HTMLVideoElement} */ ($('preview-video-player'));
+    const btnSave = $('btn-save-recording');
+    const btnDiscard = $('btn-discard-recording');
+    const durationLabel = $('preview-duration-label');
+
     try {
       showToast('Renderizando trecho selecionado em MP4...', 'info');
       btnExport.disabled = true;
-      btnExport.innerHTML = `<span>Gravando...</span>`;
 
       motionTimeline.pausePlayback();
       motionTimeline.scrub(motionTimeline.trimIn);
@@ -1041,15 +963,38 @@ function setupTimeline() {
         } else {
           motionTimeline.scrub(motionTimeline.trimOut);
           const url = await recorder.stopRecording();
-          recorder.downloadRecording(`FaceToModel_Take_${Date.now()}.mp4`);
           btnExport.disabled = false;
           btnExport.innerHTML = `
             <svg class="svg-icon sm" viewBox="0 0 24 24">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span>Exportar</span>
           `;
-          showToast('Vídeo MP4 exportado com sucesso!', 'success');
+
+          if (url && previewModal && videoPlayer) {
+            videoPlayer.src = url;
+            if (durationLabel) {
+              durationLabel.textContent = MotionTimeline.formatTime(trimDuration);
+            }
+            previewModal.classList.add('open');
+            videoPlayer.play().catch(() => {});
+
+            btnSave.onclick = () => {
+              recorder.downloadRecording(`FaceToModel_Take_${Date.now()}.mp4`);
+              previewModal.classList.remove('open');
+              videoPlayer.pause();
+              showToast('Vídeo MP4 salvo com sucesso!', 'success');
+            };
+
+            btnDiscard.onclick = () => {
+              previewModal.classList.remove('open');
+              videoPlayer.pause();
+              videoPlayer.src = '';
+              showToast('Exportação descartada', 'info');
+            };
+          } else {
+            recorder.downloadRecording(`FaceToModel_Take_${Date.now()}.mp4`);
+            showToast('Vídeo MP4 exportado com sucesso!', 'success');
+          }
         }
       };
 
@@ -1061,7 +1006,6 @@ function setupTimeline() {
         <svg class="svg-icon sm" viewBox="0 0 24 24">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <span>Exportar</span>
       `;
       showToast('Erro ao exportar vídeo: ' + err.message, 'error');
     }
@@ -1194,15 +1138,13 @@ async function loadModel(url, filename = '', assetMap = {}) {
   $('model-name').textContent = 'Carregando...';
   $('model-coverage').textContent = 'Analisando morph targets';
 
-  const presetPills = document.querySelectorAll('.model-preset-pill');
-  presetPills.forEach((p) => {
-    const pUrl = p.getAttribute('data-url') || '';
-    if (url.includes(pUrl) || (filename && pUrl.includes(filename))) {
-      p.classList.add('active');
-    } else {
-      p.classList.remove('active');
+  const selectPreset = /** @type {HTMLSelectElement} */ ($('select-model-preset'));
+  if (selectPreset) {
+    const matchingOpt = Array.from(selectPreset.options).find((opt) => opt.value === url || (filename && opt.value.includes(filename)));
+    if (matchingOpt) {
+      selectPreset.value = matchingOpt.value;
     }
-  });
+  }
 
   try {
     await renderer.loadModel(url, filename, assetMap);

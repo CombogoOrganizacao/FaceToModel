@@ -150,19 +150,17 @@
 
       <!-- 3. Ações da Timeline (Direita) -->
       <div class="tl-actions">
-        <button class="tl-action-btn secondary" id="btn-tl-clear" title="Limpar Timeline e Iniciar Novo Take">
+        <button class="tl-action-btn secondary" id="btn-tl-clear" title="Limpar Timeline e Iniciar Novo Take" aria-label="Limpar">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
           </svg>
-          <span>Limpar</span>
         </button>
 
-        <button class="tl-action-btn primary" id="btn-tl-export" title="Exportar Trecho Selecionado em MP4">
+        <button class="tl-action-btn primary" id="btn-tl-export" title="Exportar Trecho Selecionado em MP4" aria-label="Exportar">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span>Exportar</span>
         </button>
       </div>
     </div>
@@ -207,54 +205,15 @@
           </svg>
         </button>
         <div class="accordion-content">
-          <span class="accordion-sublabel">Modelos Pré-configurados (52 Expressões)</span>
-          <div class="model-presets-grid" id="model-presets">
-            <button class="model-preset-pill active" data-model="facecap" data-url="/models/facecap.glb" title="Modelo Padrão FaceCap">
-              <span class="model-pill-icon">
-                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2a9 11 0 0 0-9 11c0 5 4 9 9 9s9-4 9-9A9 11 0 0 0 12 2z"/>
-                  <path d="M8 10h.01M16 10h.01M9 15c1 1 5 1 6 0"/>
-                </svg>
-              </span>
-              <span class="model-pill-text">Padrão</span>
-            </button>
-            <button class="model-preset-pill" data-model="anime" data-url="/models/anime.glb" title="Modelo Anime Sparkle">
-              <span class="model-pill-icon">
-                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2l2.4 5.6L20 10l-4.4 3.6 1.4 5.8L12 16.6 7 19.4l1.4-5.8L4 10l5.6-2.4z"/>
-                </svg>
-              </span>
-              <span class="model-pill-text">Anime</span>
-            </button>
-            <button class="model-preset-pill" data-model="metahuman" data-url="/models/metahuman.glb" title="MetaHuman Feminino (Ada)">
-              <span class="model-pill-icon">
-                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="7" r="4"/>
-                  <path d="M5.5 21a8.5 8.5 0 0 1 13 0"/>
-                  <path d="M12 11v3"/>
-                </svg>
-              </span>
-              <span class="model-pill-text">Realista</span>
-            </button>
-            <button class="model-preset-pill" data-model="stylized" data-url="/models/stylized.glb" title="Modelo Estilizado / Hero">
-              <span class="model-pill-icon">
-                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                </svg>
-              </span>
-              <span class="model-pill-text">Estilizado</span>
-            </button>
-            <button class="model-preset-pill" data-model="furry" data-url="/models/raccoon.glb" title="Modelo Furry Raccoon">
-              <span class="model-pill-icon">
-                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 8l3-5 5 4 5-4 3 5c2 4 1 9-3 12a11 11 0 0 1-10 0C3 17 2 12 4 8z"/>
-                  <circle cx="9" cy="12" r="1" fill="currentColor"/>
-                  <circle cx="15" cy="12" r="1" fill="currentColor"/>
-                  <path d="M11 15h2"/>
-                </svg>
-              </span>
-              <span class="model-pill-text">Furry</span>
-            </button>
+          <div class="select-field" style="margin-bottom: 12px;">
+            <label for="select-model-preset" class="select-label">Modelos Pré-configurados (52 Expressões)</label>
+            <select id="select-model-preset" class="apple-select">
+              <option value="/models/facecap.glb" selected>Padrão (FaceCap)</option>
+              <option value="/models/anime.glb">Anime (Sparkle / VRM)</option>
+              <option value="/models/metahuman.glb">Realista (MetaHuman Ada)</option>
+              <option value="/models/stylized.glb">Estilizado (Hero)</option>
+              <option value="/models/raccoon.glb">Furry (Raccoon)</option>
+            </select>
           </div>
 
           <input type="file" id="file-input-model" accept=".glb,.gltf,.fbx,.obj,.mtl,.png,.jpg,.jpeg,.webp" multiple style="display: none;" />
@@ -546,40 +505,6 @@
             <div id="inspector-empty" style="font-size: 12px; color: var(--label-tertiary); text-align: center; padding: 4px 0;">
               Aguardando expressões faciais...
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Accordion 6: Gravação em MP4 ── -->
-      <div class="accordion-item open" id="acc-recording">
-        <button class="accordion-header" type="button">
-          <div class="accordion-title">
-            <svg class="svg-icon sm" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
-              <circle cx="12" cy="12" r="4" fill="currentColor"/>
-            </svg>
-            <span>Gravação de Vídeo (MP4)</span>
-          </div>
-          <svg class="accordion-chevron" viewBox="0 0 24 24">
-            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </svg>
-        </button>
-        <div class="accordion-content">
-          <div class="record-container">
-            <button class="record-shutter" id="btn-shutter" aria-label="Gravar">
-              <div class="shutter-inner"></div>
-            </button>
-            <span class="record-status-label" id="record-label">Gravar em MP4</span>
-            <span class="record-timer" id="record-timer"></span>
-            
-            <button class="btn-apple secondary" id="btn-download-video" style="display: none; margin-top: 6px;">
-              <svg class="svg-icon" viewBox="0 0 24 24" style="margin-right: 4px;">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none"/>
-                <polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="2" fill="none"/>
-                <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
-              </svg>
-              Baixar Gravação (.mp4)
-            </button>
           </div>
         </div>
       </div>
