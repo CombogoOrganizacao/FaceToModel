@@ -218,19 +218,36 @@ function setupDrawer() {
   const drawer = $('sidebar-drawer');
   const btnToggle = $('btn-toggle-drawer');
   const btnClose = $('btn-close-drawer');
+  const timelineDock = $('timeline-dock');
+
+  const updateTimelinePosition = () => {
+    const isOpen = drawer.classList.contains('open');
+    if (timelineDock) {
+      if (isOpen) {
+        timelineDock.classList.add('drawer-open');
+      } else {
+        timelineDock.classList.remove('drawer-open');
+      }
+    }
+  };
 
   const toggle = () => {
     drawer.classList.toggle('open');
+    updateTimelinePosition();
     setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
   };
 
   const close = () => {
     drawer.classList.remove('open');
+    updateTimelinePosition();
     setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
   };
 
   btnToggle.addEventListener('click', toggle);
   btnClose.addEventListener('click', close);
+
+  // Inicializa a posição da timeline de acordo com o drawer
+  updateTimelinePosition();
 
   // Atalhos de teclado: \ ou Escape
   document.addEventListener('keydown', (e) => {
@@ -402,12 +419,13 @@ function setupBackground() {
   });
 }
 
-/* ─── Picture-in-Picture Preview ─────────────────────────────────────────── */
+/* ─── Picture-in-Picture Preview (Draggable) ─────────────────────────────── */
 
 function setupPiP() {
   const pip = $('pip-container');
   const chk = /** @type {HTMLInputElement} */ ($('chk-pip-preview'));
   const btnClose = $('btn-close-pip');
+  const pipHeader = pip.querySelector('.pip-header');
 
   chk.addEventListener('change', () => {
     if (chk.checked) {
@@ -417,10 +435,73 @@ function setupPiP() {
     }
   });
 
-  btnClose.addEventListener('click', () => {
+  btnClose.addEventListener('click', (e) => {
+    e.stopPropagation();
     pip.classList.add('hidden');
     chk.checked = false;
   });
+
+  // Arrastar e soltar (Drag & Drop) da janela PiP
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let initialLeft = 0;
+  let initialTop = 0;
+
+  const onPointerDown = (e) => {
+    if (e.target.closest('#btn-close-pip')) return;
+
+    isDragging = true;
+    pip.classList.add('dragging');
+
+    const rect = pip.getBoundingClientRect();
+    startX = e.clientX;
+    startY = e.clientY;
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    pip.style.right = 'auto';
+    pip.style.bottom = 'auto';
+    pip.style.left = `${initialLeft}px`;
+    pip.style.top = `${initialTop}px`;
+
+    pip.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+
+  const onPointerMove = (e) => {
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    const newLeft = Math.max(10, Math.min(window.innerWidth - pip.offsetWidth - 10, initialLeft + dx));
+    const newTop = Math.max(10, Math.min(window.innerHeight - pip.offsetHeight - 10, initialTop + dy));
+
+    pip.style.left = `${newLeft}px`;
+    pip.style.top = `${newTop}px`;
+  };
+
+  const onPointerUp = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    pip.classList.remove('dragging');
+    try {
+      pip.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+  };
+
+  if (pipHeader) {
+    pipHeader.addEventListener('pointerdown', onPointerDown);
+    pipHeader.addEventListener('pointermove', onPointerMove);
+    pipHeader.addEventListener('pointerup', onPointerUp);
+    pipHeader.addEventListener('pointercancel', onPointerUp);
+  } else {
+    pip.addEventListener('pointerdown', onPointerDown);
+    pip.addEventListener('pointermove', onPointerMove);
+    pip.addEventListener('pointerup', onPointerUp);
+    pip.addEventListener('pointercancel', onPointerUp);
+  }
 }
 
 /* ─── Device Enumeration (Camera & Microphone) ────────────────────────────── */

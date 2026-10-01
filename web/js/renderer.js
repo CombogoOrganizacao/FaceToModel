@@ -376,9 +376,13 @@ export class Renderer {
 
     // Restore original normals non-destructively on all meshes
     this._model.traverse((node) => {
-      if (node.isMesh && node.geometry && node.geometry.attributes && node.geometry.attributes.normal && node.userData.originalNormals) {
-        node.geometry.attributes.normal.copy(node.userData.originalNormals);
-        node.geometry.attributes.normal.needsUpdate = true;
+      if (node.isMesh && node.geometry && node.userData.originalNormals) {
+        if (node.geometry.attributes && node.geometry.attributes.normal && node.geometry.attributes.normal.array && node.userData.originalNormals.array) {
+          node.geometry.attributes.normal.array.set(node.userData.originalNormals.array);
+          node.geometry.attributes.normal.needsUpdate = true;
+        } else {
+          node.geometry.setAttribute('normal', node.userData.originalNormals.clone());
+        }
       }
     });
 

@@ -11,6 +11,15 @@ import { joinRoom } from './trystero-nostr.js';
 
 const APP_ID = 'facetomodel-p2p-v1';
 
+const HIGH_AVAILABILITY_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+  'wss://nostr.mom',
+  'wss://relay.nostr.band',
+  'wss://purplerelay.com',
+];
+
 export class P2PClient {
   /**
    * @param {string} roomId
@@ -31,8 +40,12 @@ export class P2PClient {
   connect() {
     console.log(`[P2P] Entrando na sala: ${this.roomId} (Host: ${this.isHost})`);
     
-    // Conecta na sala descentralizada Nostr (signaling sem servidor próprio)
-    this.room = joinRoom({ appId: APP_ID }, this.roomId);
+    // Conecta na sala descentralizada Nostr com relays de alta disponibilidade
+    this.room = joinRoom({
+      appId: APP_ID,
+      relayUrls: HIGH_AVAILABILITY_RELAYS,
+      relayConfig: { warnOnRelayFailure: false }
+    }, this.roomId);
 
     // Canal ultrarrápido para blendshapes
     const action = this.room.makeAction('blendshapes');
