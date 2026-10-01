@@ -45,7 +45,7 @@
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="2" fill="none"/>
         </svg>
         <h3>Solte o Modelo 3D Aqui</h3>
-        <p>Formatos suportados: .glb e .gltf</p>
+        <p>Formatos suportados: .glb, .gltf, .fbx e .obj (+ texturas/mtl)</p>
       </div>
     </div>
 
@@ -226,7 +226,7 @@
               </span>
               <span class="model-pill-text">Anime</span>
             </button>
-            <button class="model-preset-pill" data-model="metahuman" data-url="/models/metahuman.glb" title="Modelo Humanoide Realista">
+            <button class="model-preset-pill" data-model="metahuman" data-url="/models/metahuman.glb" title="MetaHuman Feminino (Ada)">
               <span class="model-pill-icon">
                 <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="7" r="4"/>
@@ -257,7 +257,7 @@
             </button>
           </div>
 
-          <input type="file" id="file-input-model" accept=".glb,.gltf" style="display: none;" />
+          <input type="file" id="file-input-model" accept=".glb,.gltf,.fbx,.obj,.mtl,.png,.jpg,.jpeg,.webp" multiple style="display: none;" />
 
           <div class="card-row interactive" id="btn-choose-model" style="margin-top: 10px;">
             <div class="row-leading">
@@ -274,6 +274,26 @@
               </div>
             </div>
             <span style="font-size: 11px; font-weight: 500; color: var(--accent-blue);">Importar</span>
+          </div>
+
+          <!-- Toggle de Texturas -->
+          <div class="card-row" style="margin-top: 8px;">
+            <div class="row-leading">
+              <div class="row-icon-box purple">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Exibir Texturas</span>
+                <span class="row-sub">Ativar/Desativar mapas de cor</span>
+              </div>
+            </div>
+            <label class="ios-switch">
+              <input type="checkbox" id="chk-show-textures" checked>
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
           </div>
         </div>
       </div>

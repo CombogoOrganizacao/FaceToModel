@@ -573,17 +573,26 @@ function setupUI() {
     if (e.target === $('modal-qr')) closeQRModal();
   });
 
-  // Carregar Modelo 3D
+  // Carregar Modelo 3D (.glb, .gltf, .fbx, .obj)
   const fileInput = $('file-input-model');
   $('btn-choose-model').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    await loadModel(url, file.name);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    await handleUploadedFiles(files);
     fileInput.value = '';
   });
+
+  // Toggle de Texturas
+  const chkTextures = /** @type {HTMLInputElement} */ ($('chk-show-textures'));
+  if (chkTextures) {
+    chkTextures.addEventListener('change', () => {
+      if (renderer) {
+        renderer.setTexturesEnabled(chkTextures.checked);
+        showToast(chkTextures.checked ? 'Texturas ativadas' : 'Texturas desativadas', 'info');
+      }
+    });
+  }
 
   // Redefinir Câmera
   $('btn-reset-view').addEventListener('click', () => {
@@ -606,7 +615,7 @@ function closeQRModal() {
   $('modal-qr').classList.remove('open');
 }
 
-/* ─── Drag & Drop 3D Model (.glb / .gltf) ──────────────────────────────────── */
+/* ─── Drag & Drop 3D Model (.glb / .gltf / .fbx / .obj + textures) ────────── */
 
 function setupDragAndDrop() {
   const dropOverlay = $('drag-overlay');
@@ -636,15 +645,47 @@ function setupDragAndDrop() {
     dragCounter = 0;
     dropOverlay.classList.remove('active');
 
-    const file = e.dataTransfer?.files?.[0];
-    if (file && (file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf'))) {
-      const url = URL.createObjectURL(file);
-      await loadModel(url, file.name);
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } else if (file) {
-      showToast('Formato não suportado. Use arquivos .glb ou .gltf', 'error');
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) {
+      await handleUploadedFiles(files);
     }
   });
+}
+
+/**
+ * Handle a list of uploaded files (single model or model + textures/mtl).
+ * @param {File[]} files
+ */
+async function handleUploadedFiles(files) {
+  // Find primary model file
+  const modelFile = files.find((f) => {
+    const n = f.name.toLowerCase();
+    return n.endsWith('.glb') || n.endsWith('.gltf') || n.endsWith('.fbx') || n.endsWith('.obj');
+  });
+
+  if (!modelFile) {
+    showToast('Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj) encontrado.', 'error');
+    return;
+  }
+
+  // Create asset map of object URLs for textures / mtl files
+  const assetMap = {};
+  const urlsToRevoke = [];
+
+  for (const f of files) {
+    const objUrl = URL.createObjectURL(f);
+    urlsToRevoke.push(objUrl);
+    assetMap[f.name] = objUrl;
+    assetMap[f.name.toLowerCase()] = objUrl;
+  }
+
+  const modelUrl = assetMap[modelFile.name];
+  await loadModel(modelUrl, modelFile.name, assetMap);
+
+  // Revoke URLs after model has had time to parse and load textures into WebGL memory
+  setTimeout(() => {
+    urlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
+  }, 15000);
 }
 
 /* ─── Local Webcam Tracking ───────────────────────────────────────────────── */
@@ -1149,7 +1190,7 @@ function startInspectorLoop() {
 
 /* ─── Model Loader (Resilient Background Load) ────────────────────────────── */
 
-async function loadModel(url, filename) {
+async function loadModel(url, filename = '', assetMap = {}) {
   $('model-name').textContent = 'Carregando...';
   $('model-coverage').textContent = 'Analisando morph targets';
 
@@ -1164,7 +1205,7 @@ async function loadModel(url, filename) {
   });
 
   try {
-    await renderer.loadModel(url);
+    await renderer.loadModel(url, filename, assetMap);
     const coverage = renderer.blendshapeCoverage;
     $('model-name').textContent = filename;
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;

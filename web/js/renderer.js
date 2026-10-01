@@ -18,6 +18,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader }    from 'three/addons/loaders/KTX2Loader.js';
 import { DRACOLoader }   from 'three/addons/loaders/DRACOLoader.js';
+import { FBXLoader }     from 'three/addons/loaders/FBXLoader.js';
+import { OBJLoader }     from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
 
@@ -121,6 +124,7 @@ export class Renderer {
     this._fpsLast = performance.now();
     this._running = false;
     this._currentShadingMode = 'studio';
+    this._showTextures = true;
     this._lightAzimuth = 45;
     this._lightElevation = 35;
     this._smoothLevel = 0.85;
@@ -140,11 +144,15 @@ export class Renderer {
   /* ─── Public API ──────────────────────────────────────────────────────── */
 
   /**
-   * Load a GLTF/GLB model, add it to the scene, and rebuild the blendshape map.
-   * @param {string} url - URL or object URL of the .glb / .gltf file
+   * Load a 3D model (.glb, .gltf, .fbx, .obj) and add it to the scene.
+   * Supports texture maps and material files automatically.
+   *
+   * @param {string} url - URL or object URL of the model file
+   * @param {string} [filename] - Optional filename to determine format extension
+   * @param {Record<string, string>} [assetMap] - Optional map of auxiliary files (textures, .mtl)
    * @returns {Promise<THREE.Object3D>}
    */
-  async loadModel(url) {
+  async loadModel(url, filename = '', assetMap = {}) {
     if (this._model) {
       this._scene.remove(this._model);
       this._model = null;
@@ -152,10 +160,74 @@ export class Renderer {
       this.blendshapeCoverage = 0;
     }
 
-    console.log(`[Renderer] Loading model: ${url}`);
+    const lowerName = (filename || url).toLowerCase();
+    console.log(`[Renderer] Loading 3D model (${lowerName}): ${url}`);
 
-    const gltf = await this._loader.loadAsync(url);
-    const model = gltf.scene;
+    let model;
+
+    if (lowerName.endsWith('.fbx')) {
+      const fbxLoader = new FBXLoader();
+      const loadingManager = new THREE.LoadingManager();
+      loadingManager.setURLModifier((itemUrl) => {
+        const baseName = itemUrl.split('/').pop();
+        if (assetMap[baseName]) return assetMap[baseName];
+        if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
+        return itemUrl;
+      });
+      fbxLoader.manager = loadingManager;
+      model = await fbxLoader.loadAsync(url);
+    } else if (lowerName.endsWith('.obj')) {
+      const loadingManager = new THREE.LoadingManager();
+      loadingManager.setURLModifier((itemUrl) => {
+        const baseName = itemUrl.split('/').pop();
+        if (assetMap[baseName]) return assetMap[baseName];
+        if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
+        return itemUrl;
+      });
+
+      // Check if there is an accompanying .mtl file
+      const mtlKey = Object.keys(assetMap).find((k) => k.toLowerCase().endsWith('.mtl'));
+      if (mtlKey) {
+        try {
+          const mtlLoader = new MTLLoader(loadingManager);
+          const materials = await mtlLoader.loadAsync(assetMap[mtlKey]);
+          materials.preload();
+          const objLoader = new OBJLoader(loadingManager);
+          objLoader.setMaterials(materials);
+          model = await objLoader.loadAsync(url);
+        } catch (mtlErr) {
+          console.warn('[Renderer] Não foi possível carregar o arquivo .mtl, usando fallback padrão:', mtlErr);
+          const objLoader = new OBJLoader(loadingManager);
+          model = await objLoader.loadAsync(url);
+        }
+      } else {
+        const objLoader = new OBJLoader(loadingManager);
+        model = await objLoader.loadAsync(url);
+      }
+    } else {
+      // Standard GLTF / GLB loader with KTX2 & DRACO
+      const gltf = await this._loader.loadAsync(url);
+      model = gltf.scene;
+    }
+
+    // Ensure all materials are double-sided and well lit
+    model.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+        if (node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => {
+            m.side = THREE.DoubleSide;
+          });
+        }
+      }
+    });
+
+    // Fix models that are authored facing away (+Z forward vs -Z forward)
+    if (lowerName.includes('anime') || lowerName.includes('vrm')) {
+      model.rotation.y = Math.PI;
+    }
 
     // Centre and scale: if full-body model, frame specifically on the head/face
     const fullBox = new THREE.Box3().setFromObject(model);
@@ -191,14 +263,6 @@ export class Renderer {
     model.scale.setScalar(scale);
     model.position.sub(centre.multiplyScalar(scale));
 
-    // Enable shadows
-    model.traverse((node) => {
-      if (node.isMesh) {
-        node.castShadow    = true;
-        node.receiveShadow = true;
-      }
-    });
-
     // Detect head bone if present (humanoid/ReadyPlayerMe models)
     this._headBone = null;
     model.traverse((node) => {
@@ -219,19 +283,48 @@ export class Renderer {
     this._modelMap          = map;
     this.blendshapeCoverage = coverage;
 
-    // Cache original materials for non-destructive shading modes
+    // Cache original materials for non-destructive shading & texture toggles
     model.traverse((node) => {
       if (node.isMesh && node.material) {
         node.userData.originalMaterial = node.material;
       }
     });
 
-    // Apply currently active shading mode
+    // Apply currently active shading mode and texture visibility
     this.setShadingMode(this._currentShadingMode);
+    this.setTexturesEnabled(this._showTextures);
 
     this.resetCamera();
     console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 (HeadBone: ${this._headBone ? this._headBone.name : 'root'})`);
     return model;
+  }
+
+  /**
+   * Toggle texture maps on and off across the model.
+   * @param {boolean} enabled
+   */
+  setTexturesEnabled(enabled) {
+    this._showTextures = Boolean(enabled);
+    if (!this._model) return;
+
+    this._model.traverse((node) => {
+      if (node.isMesh && node.material) {
+        const mats = Array.isArray(node.material) ? node.material : [node.material];
+        mats.forEach((m) => {
+          if (m.map !== undefined) {
+            if (!enabled) {
+              if (m.map && !m.userData.cachedMap) {
+                m.userData.cachedMap = m.map;
+              }
+              m.map = null;
+            } else if (m.userData.cachedMap) {
+              m.map = m.userData.cachedMap;
+            }
+            m.needsUpdate = true;
+          }
+        });
+      }
+    });
   }
 
   /**
