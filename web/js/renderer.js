@@ -24,6 +24,8 @@ import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
+import { createMarschnerHairMaterial } from './shaders/hair-shader.js';
+import { generateHairFlowMap } from './hair-atlas-generator.js';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 
@@ -238,41 +240,38 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 2. Fios de Cabelo / Cartas de Pelo do MetaHuman (MeshPhysicalMaterial com Anisotropia e Sheen de Melanina)
+            // 2. Fios de Cabelo do MetaHuman (Unreal Engine 5 Marschner Dual-Lobe Anisotropic Hair Shader)
             else if (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow'))) {
-              const hairMat = new THREE.MeshPhysicalMaterial({
-                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+              const alphaMap = m.map ? this._synthesizeAlphaFromTexture(m.map) : (m.alphaMap || null);
+              const flowMap = generateHairFlowMap(512);
+              const hairMat = createMarschnerHairMaterial({
                 map: m.map || null,
-                alphaMap: m.alphaMap || null,
-                normalMap: m.normalMap || null,
-                roughness: 0.42,
-                metalness: 0.0,
-                anisotropy: 0.85,
-                anisotropyRotation: Math.PI / 2,
-                sheen: 0.7,
-                sheenColor: new THREE.Color(0x5a321a),
-                sheenRoughness: 0.5,
-                transparent: true,
-                alphaTest: 0.28,
-                depthWrite: true,
-                depthTest: true,
-                alphaToCoverage: true,
-                side: THREE.DoubleSide,
+                alphaMap: alphaMap,
+                flowMap: flowMap,
+                color: new THREE.Color(0x281912), // Deep natural dark hair
+                melaninColor: new THREE.Color(0x8c5228), // Rich melanin golden-brown specular
+                roughness: 0.32,
+                specularR: 0.95,
+                specularTRT: 1.35,
+                transmissionTT: 0.75,
+                alphaTest: 0.18,
+                envMap: this._envMap,
                 name: m.name,
               });
-              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.85;
+              this._syncHairUniforms(hairMat);
               return hairMat;
             }
-            // 3. Sobrancelhas (Eyebrows — polygonOffset para eliminar Z-fighting com a pele da testa)
+            // 3. Sobrancelhas (Eyebrows — polygonOffset para eliminar Z-fighting e Alpha Sintetizado)
             else if (matName.includes('eyebrow')) {
+              const alphaMap = m.map ? this._synthesizeAlphaFromTexture(m.map) : (m.alphaMap || null);
               const browMat = new THREE.MeshPhysicalMaterial({
                 color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
                 map: m.map || null,
-                alphaMap: m.alphaMap || null,
-                roughness: 0.48,
+                alphaMap: alphaMap,
+                roughness: 0.45,
                 metalness: 0.0,
                 transparent: true,
-                alphaTest: 0.32,
+                alphaTest: 0.22,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -284,17 +283,18 @@ export class Renderer {
               });
               return browMat;
             }
-            // 4. Cílios (Eyelashes / LashMat — umidade e especularidade natural com polygonOffset)
+            // 4. Cílios (Eyelashes / LashMat — Atlas Procedural Realista com fios afilados e umidade natural)
             else if (matName.includes('eyelashes') || matName.includes('lashmat')) {
+              const lashTex = this._createProceduralEyelashTextures();
               const lashMat = new THREE.MeshPhysicalMaterial({
-                color: m.color ? m.color.clone() : new THREE.Color(0x1a120b),
-                map: m.map || null,
-                alphaMap: m.alphaMap || null,
+                color: new THREE.Color(0x160e0a),
+                map: lashTex.map,
+                alphaMap: lashTex.alphaMap,
                 roughness: 0.22,
                 metalness: 0.0,
-                specularIntensity: 0.65,
+                specularIntensity: 0.85,
                 transparent: true,
-                alphaTest: 0.25,
+                alphaTest: 0.2,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -557,18 +557,18 @@ export class Renderer {
         break;
 
       case 'unreal':
-        // Unreal Engine 5 Lumen / Cinematic Lighting setup
-        this._keyLight.color.setHex(0xfff8f0);
-        this._keyLight.intensity = 2.8;
-        this._keyLight.position.set(1.8, 2.2, 2.2);
-        this._fillLight.color.setHex(0xcbe3ff);
-        this._fillLight.intensity = 1.2;
-        this._fillLight.position.set(-2.2, 0.8, 1.8);
-        this._rimLight.color.setHex(0x90b0ff);
-        this._rimLight.intensity = 1.4;
-        this._rimLight.position.set(0, 1.2, -2.4);
-        this._ambientLight.color.setHex(0xffffff);
-        this._ambientLight.intensity = 0.4;
+        // Unreal Engine 5 Lumen / Cinematic Lighting setup matching UE5 studio portrait
+        this._keyLight.color.setHex(0xfffaec);
+        this._keyLight.intensity = 3.0;
+        this._keyLight.position.set(2.2, 2.6, 2.4);
+        this._fillLight.color.setHex(0x94a3b8);
+        this._fillLight.intensity = 0.85;
+        this._fillLight.position.set(-2.4, 0.6, 1.8);
+        this._rimLight.color.setHex(0x93c5fd);
+        this._rimLight.intensity = 2.0;
+        this._rimLight.position.set(0.4, 2.0, -2.6);
+        this._ambientLight.color.setHex(0x1e293b);
+        this._ambientLight.intensity = 0.5;
         if (this._scene) this._scene.environment = this._envMap;
         break;
 
@@ -744,6 +744,9 @@ export class Renderer {
       case 'cyber':
       default: {
         if (orig.wireframe !== undefined) orig.wireframe = false;
+        if (orig.uniforms) {
+          this._syncHairUniforms(orig);
+        }
         return orig;
       }
     }
@@ -785,6 +788,43 @@ export class Renderer {
     const z = dist * Math.cos(radElev) * Math.cos(radAzimuth);
 
     this._keyLight.position.set(x, y, z);
+
+    // Sync Marschner Hair materials with current light vectors
+    if (this._model) {
+      this._model.traverse((node) => {
+        if (node.isMesh && node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => this._syncHairUniforms(m));
+        }
+      });
+    }
+  }
+
+  /**
+   * Synchronizes scene lights and environment uniforms with Marschner Hair Shader materials.
+   * @param {THREE.Material} mat
+   */
+  _syncHairUniforms(mat) {
+    if (!mat || !mat.uniforms || !this._keyLight) return;
+    if (mat.uniforms.uKeyLightColor) {
+      mat.uniforms.uKeyLightColor.value.copy(this._keyLight.color).multiplyScalar(this._keyLight.intensity);
+      mat.uniforms.uKeyLightDir.value.copy(this._keyLight.position).normalize();
+    }
+    if (mat.uniforms.uFillLightColor && this._fillLight) {
+      mat.uniforms.uFillLightColor.value.copy(this._fillLight.color).multiplyScalar(this._fillLight.intensity);
+      mat.uniforms.uFillLightDir.value.copy(this._fillLight.position).normalize();
+    }
+    if (mat.uniforms.uRimLightColor && this._rimLight) {
+      mat.uniforms.uRimLightColor.value.copy(this._rimLight.color).multiplyScalar(this._rimLight.intensity);
+      mat.uniforms.uRimLightDir.value.copy(this._rimLight.position).normalize();
+    }
+    if (mat.uniforms.uAmbientColor && this._ambientLight) {
+      mat.uniforms.uAmbientColor.value.copy(this._ambientLight.color).multiplyScalar(this._ambientLight.intensity);
+    }
+    if (mat.uniforms.uEnvMap && this._envMap) {
+      mat.uniforms.uEnvMap.value = this._envMap;
+      mat.uniforms.uHasEnvMap.value = true;
+    }
   }
 
   /**
@@ -920,5 +960,143 @@ export class Renderer {
     this._renderer.setSize(w, h, false);
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Generates a high-precision alpha mask from an RGB texture where the background is black.
+   * Eliminates cardboard borders on hair and eyebrow cards while preserving fine anti-aliased strand fringes.
+   *
+   * @param {THREE.Texture} texture
+   * @returns {THREE.CanvasTexture|null}
+   */
+  _synthesizeAlphaFromTexture(texture) {
+    if (!texture) return null;
+    if (texture.userData && texture.userData.synthesizedAlphaMap) {
+      return texture.userData.synthesizedAlphaMap;
+    }
+
+    const img = texture.image;
+    if (!img) return null;
+
+    try {
+      const width = img.width || 1024;
+      const height = img.height || 1024;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const imgData = ctx.getImageData(0, 0, width, height);
+      const data = imgData.data;
+      const len = data.length;
+
+      // Extract strand luminance and generate crisp antialiased alpha
+      for (let i = 0; i < len; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const maxVal = Math.max(r, g, b);
+
+        if (maxVal <= 3) {
+          data[i] = 0;
+          data[i + 1] = 0;
+          data[i + 2] = 0;
+          data[i + 3] = 0;
+        } else {
+          // Hair and brow strand albedos range from 4 to 52 in baked MetaHuman textures
+          const norm = Math.min(1.0, Math.max(0.0, (maxVal - 3) / 45.0));
+          const alpha = Math.round(norm * 255);
+          data[i] = alpha;
+          data[i + 1] = alpha;
+          data[i + 2] = alpha;
+          data[i + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+
+      const alphaMap = new THREE.CanvasTexture(canvas);
+      alphaMap.wrapS = texture.wrapS;
+      alphaMap.wrapT = texture.wrapT;
+      alphaMap.flipY = texture.flipY;
+      alphaMap.needsUpdate = true;
+
+      texture.userData.synthesizedAlphaMap = alphaMap;
+      return alphaMap;
+    } catch (err) {
+      console.warn('[Renderer] Não foi possível sintetizar mapa de transparência da textura:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Procedurally generates a photorealistic feathered eyelash atlas texture and alpha mask.
+   * Replaces missing or 1x1 dummy lash textures in GLB models with realistic tapered strands.
+   *
+   * @returns {{ map: THREE.CanvasTexture, alphaMap: THREE.CanvasTexture }}
+   */
+  _createProceduralEyelashTextures() {
+    if (this._cachedLashTextures) return this._cachedLashTextures;
+
+    const width = 1024;
+    const height = 1024;
+
+    // 1. Color Map Canvas
+    const colorCanvas = document.createElement('canvas');
+    colorCanvas.width = width;
+    colorCanvas.height = height;
+    const cCtx = colorCanvas.getContext('2d');
+    cCtx.fillStyle = '#140d09'; // Deep natural espresso lash tone
+    cCtx.fillRect(0, 0, width, height);
+
+    // 2. Alpha Mask Canvas
+    const alphaCanvas = document.createElement('canvas');
+    alphaCanvas.width = width;
+    alphaCanvas.height = height;
+    const aCtx = alphaCanvas.getContext('2d');
+    aCtx.fillStyle = '#000000';
+    aCtx.fillRect(0, 0, width, height);
+
+    // Draw realistic tapered eyelash strands repeating across UV space
+    const numStrands = 48;
+    const spacing = width / numStrands;
+
+    aCtx.fillStyle = '#ffffff';
+
+    for (let i = 0; i < numStrands; i++) {
+      const xBase = i * spacing + spacing * 0.5 + (Math.sin(i * 3.7) * (spacing * 0.2));
+      const strandLen = height * (0.65 + Math.sin(i * 2.1) * 0.25);
+      const curlCurve = (Math.sin(i * 1.3) * 35) + (i % 2 === 0 ? 12 : -12);
+      const rootWidth = 5.0 + Math.sin(i * 5.1) * 1.5;
+
+      // Root to tip quadratic curve
+      aCtx.beginPath();
+      aCtx.moveTo(xBase - rootWidth * 0.5, height);
+      aCtx.lineTo(xBase + rootWidth * 0.5, height);
+      aCtx.quadraticCurveTo(
+        xBase + curlCurve * 0.5 + 2, height - strandLen * 0.5,
+        xBase + curlCurve, height - strandLen
+      );
+      aCtx.quadraticCurveTo(
+        xBase + curlCurve * 0.5 - 2, height - strandLen * 0.5,
+        xBase - rootWidth * 0.5, height
+      );
+      aCtx.closePath();
+      aCtx.fill();
+    }
+
+    const colorTex = new THREE.CanvasTexture(colorCanvas);
+    colorTex.wrapS = THREE.RepeatWrapping;
+    colorTex.wrapT = THREE.ClampToEdgeWrapping;
+    colorTex.needsUpdate = true;
+
+    const alphaTex = new THREE.CanvasTexture(alphaCanvas);
+    alphaTex.wrapS = THREE.RepeatWrapping;
+    alphaTex.wrapT = THREE.ClampToEdgeWrapping;
+    alphaTex.needsUpdate = true;
+
+    this._cachedLashTextures = { map: colorTex, alphaMap: alphaTex };
+    return this._cachedLashTextures;
   }
 }
