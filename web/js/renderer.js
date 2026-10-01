@@ -82,7 +82,7 @@ export class Renderer {
     /* ── KTX2 & GLTF Loaders ── */
     try {
       this._ktx2Loader = new KTX2Loader();
-      this._ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/libs/basis/');
+      this._ktx2Loader.setTranscoderPath('/libs/basis/');
       this._ktx2Loader.detectSupport(this._renderer);
 
       this._loader = new GLTFLoader();
