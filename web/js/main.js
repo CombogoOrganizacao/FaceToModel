@@ -864,10 +864,10 @@ function setupTimeline() {
         btnLoop.classList.remove('active');
       }
 
-      // 4. Leituras de Tempo e Frame
+      // 4. Leituras de Tempo e Frame (60 FPS)
       timeCurrent.textContent = MotionTimeline.formatTime(state.currentTime);
       timeTotal.textContent = MotionTimeline.formatTime(state.totalDuration);
-      const curFrame = Math.round(state.currentTime * 30);
+      const curFrame = Math.round(state.currentTime * 60);
       frameBadge.textContent = `Quadro ${curFrame} (${state.frameCount} gravados)`;
 
       // 5. Cursor Scrubber (Playhead)

@@ -79,8 +79,8 @@ export class Recorder {
       return;
     }
 
-    // ── 1. Canvas video track ──
-    const fps = 30;
+    // ── 1. Canvas video track (Locked to 60 FPS) ──
+    const fps = 60;
     let canvasStream;
     try {
       canvasStream = this.canvas.captureStream(fps);
