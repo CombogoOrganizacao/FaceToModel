@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>FaceToModel</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>MinimumOSVersion</key>
+	<string>17.0</string>
+
+	<!-- Privacy / Permissions -->
+	<key>NSCameraUsageDescription</key>
+	<string>FaceToModel precisa da câmera para rastrear expressões faciais com ARKit</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>FaceToModel usa Face ID/TrueDepth Camera para rastrear expressões faciais</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FaceToModel precisa de acesso à rede local para enviar dados de expressão facial ao servidor</string>
+
+	<!-- Network -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+
+	<!-- SwiftUI Scene Lifecycle -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
+
+	<!-- Required device capabilities -->
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arkit</string>
+		<string>face-tracking</string>
+	</array>
+
+	<!-- Launch Screen (default) -->
+	<key>UILaunchScreen</key>
+	<dict/>
+
+	<!-- Supported orientations -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>

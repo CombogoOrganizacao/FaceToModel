@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceToModel</title>
+  <meta name="description" content="Rastreamento facial 3D em tempo real com Three.js e WebRTC P2P" />
+  <meta name="color-scheme" content="dark" />
+
+  <link rel="stylesheet" href="/css/app.css" />
+
+  <!-- Three.js CDN -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three":         "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+    }
+  }
+  </script>
+  
+  <!-- QRCode Generator CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ── Viewport 3D Canvas ── -->
+  <div class="canvas-wrapper">
+    <canvas id="main-canvas"></canvas>
+    
+    <!-- Status HUD flutuante -->
+    <div class="canvas-hud" id="hud-status">
+      <div class="hud-dot" id="hud-dot"></div>
+      <span id="hud-text">Aguardando Sensor</span>
+    </div>
+  </div>
+
+  <!-- ── Painel Lateral Apple HIG ── -->
+  <aside class="sidebar">
+    
+    <header class="sidebar-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <!-- SVG Cube Face -->
+          <svg class="svg-icon" viewBox="0 0 24 24">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </div>
+        <span class="brand-title">FaceToModel</span>
+      </div>
+      <span class="brand-badge" id="fps-counter">60 FPS</span>
+    </header>
+
+    <div class="sidebar-content">
+
+      <!-- ── Seção 1: Conexão & Câmera ── -->
+      <div class="section-group">
+        <span class="section-label">Sensor Facial</span>
+        <div class="card-group">
+          
+          <!-- Pareamento iPhone via QR Code -->
+          <div class="card-row interactive" id="btn-open-qr">
+            <div class="row-leading">
+              <div class="row-icon-box blue">
+                <!-- SVG QR Code -->
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h3v2h-3v-2zm-5 0h2v3h-2v-3zm2 3h3v3h-3v-3zm3 0h2v3h-2v-3zm-5 2h2v2h-2v-2z" fill="currentColor"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Conectar iPhone</span>
+                <span class="row-sub" id="p2p-status-sub">Escanear QR Code com a câmera</span>
+              </div>
+            </div>
+            <svg class="svg-icon" style="color:var(--label-tertiary);" viewBox="0 0 24 24">
+              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Câmera Local Mac -->
+          <div class="card-row interactive" id="btn-toggle-local-cam">
+            <div class="row-leading">
+              <div class="row-icon-box orange">
+                <!-- SVG Camera -->
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title" id="local-cam-title">Câmera deste Mac</span>
+                <span class="row-sub">MediaPipe Local</span>
+              </div>
+            </div>
+            <span id="local-cam-badge" style="font-size: 12px; color: var(--label-secondary);">Ativar</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Seção 2: Modelo 3D ── -->
+      <div class="section-group">
+        <span class="section-label">Modelo 3D</span>
+        <div class="card-group">
+          
+          <input type="file" id="file-input-model" accept=".glb,.gltf" style="display: none;" />
+
+          <div class="card-row interactive" id="btn-choose-model">
+            <div class="row-leading">
+              <div class="row-icon-box green">
+                <!-- SVG 3D Cube -->
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title" id="model-name">facecap.glb</span>
+                <span class="row-sub" id="model-coverage">52 blendshapes mapeados</span>
+              </div>
+            </div>
+            <svg class="svg-icon" style="color:var(--label-tertiary);" viewBox="0 0 24 24">
+              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Seção 3: Visualização ── -->
+      <div class="section-group">
+        <span class="section-label">Ambiente</span>
+        <div class="card-group">
+          
+          <div class="card-row">
+            <div class="row-leading">
+              <div class="row-icon-box gray">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="2"/>
+                  <line x1="9" y1="21" x2="9" y2="9" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Modo Wireframe</span>
+              </div>
+            </div>
+            <label class="ios-switch">
+              <input type="checkbox" id="chk-wireframe">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+
+          <div class="card-row interactive" id="btn-reset-view">
+            <div class="row-leading">
+              <div class="row-icon-box gray">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <path d="M3 3v5h5" stroke="currentColor" stroke-width="2" fill="none"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Redefinir Câmera</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Seção 4: Gravação ── -->
+      <div class="section-group">
+        <span class="section-label">Gravação de Vídeo</span>
+        <div class="card-group">
+          <div class="record-container">
+            <button class="record-shutter" id="btn-shutter" aria-label="Gravar">
+              <div class="shutter-inner"></div>
+            </button>
+            <span class="record-status-label" id="record-label">Iniciar Gravação</span>
+            <span class="record-timer" id="record-timer"></span>
+            
+            <button class="btn-apple secondary" id="btn-download-video" style="display: none; margin-top: 6px;">
+              <svg class="svg-icon" viewBox="0 0 24 24" style="margin-right: 4px;">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none"/>
+                <polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="2" fill="none"/>
+                <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              Baixar Gravação
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+</div>
+
+<!-- ── Modal Pareamento por QR Code ── -->
+<div class="modal-backdrop" id="modal-qr">
+  <div class="modal-sheet">
+    <h3 style="font-size: 18px; font-weight: 600; color: #fff;">Conectar iPhone</h3>
+    <p style="font-size: 13px; color: var(--label-secondary); margin-top: 4px;">
+      Aponte a câmera nativa do iPhone para o código abaixo:
+    </p>
+
+    <div class="qr-box">
+      <canvas id="qr-canvas"></canvas>
+    </div>
+
+    <div style="font-size: 11px; color: var(--label-tertiary); font-family: var(--font-mono); margin-bottom: 16px;" id="room-code-label">
+      SALA: ...
+    </div>
+
+    <button class="btn-apple secondary" id="btn-close-modal">Fechar</button>
+  </div>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

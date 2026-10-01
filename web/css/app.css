@@ -1,0 +1,482 @@
+/**
+ * FaceToModel — Apple Human Interface Guidelines (HIG) Minimalist Design System
+ * Inspired by macOS Sonoma / iOS 18 Design Language.
+ * Uses pure SVG icons, SF Pro typography scale, continuous rounded corners (squircles),
+ * vibrant frosted glass materials, and refined native controls.
+ */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", -apple-system-headline, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+
+  /* Apple Dark Theme Canvas & Vibrant Sidebar */
+  --bg-canvas: #050508;
+  --bg-sidebar: rgba(24, 24, 28, 0.72);
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --bg-card-hover: rgba(255, 255, 255, 0.08);
+  --bg-card-active: rgba(255, 255, 255, 0.12);
+
+  /* Label Hierarchy */
+  --label-primary: #ffffff;
+  --label-secondary: rgba(235, 235, 245, 0.65);
+  --label-tertiary: rgba(235, 235, 245, 0.35);
+
+  /* Apple System Colors */
+  --sys-blue: #0a84ff;
+  --sys-blue-hover: #0077ed;
+  --sys-green: #30d158;
+  --sys-red: #ff453a;
+  --sys-orange: #ff9f0a;
+  --sys-gray: #8e8e93;
+
+  /* Separators & Borders */
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-divider: rgba(255, 255, 255, 0.06);
+
+  /* Layout */
+  --sidebar-width: 320px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+
+  --blur-sidebar: blur(40px) saturate(190%);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-canvas);
+  color: var(--label-primary);
+  font-family: var(--font-sans);
+}
+
+.app-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* ── Viewport 3D Canvas ── */
+.canvas-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #151522 0%, #06060a 100%);
+}
+
+#main-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+/* ── HUD Status Badge on Canvas ── */
+.canvas-hud {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(18, 18, 22, 0.65);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--label-primary);
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+.canvas-hud .hud-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sys-gray);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+.canvas-hud .hud-dot.active {
+  background: var(--sys-green);
+  box-shadow: 0 0 10px var(--sys-green);
+}
+
+/* ── Sidebar (Apple HIG Minimal) ── */
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  height: 100%;
+  background: var(--bg-sidebar);
+  backdrop-filter: var(--blur-sidebar);
+  -webkit-backdrop-filter: var(--blur-sidebar);
+  border-left: 0.5px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.sidebar::-webkit-scrollbar { display: none; }
+
+.sidebar-header {
+  padding: 24px 20px 16px;
+  border-bottom: 0.5px solid var(--border-divider);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--sys-blue), #5e5ce6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.brand-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--label-primary);
+}
+
+.brand-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  background: rgba(10, 132, 255, 0.18);
+  color: var(--sys-blue);
+  border-radius: 12px;
+  font-family: var(--font-mono);
+}
+
+.sidebar-content {
+  padding: 16px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Section Groups ── */
+.section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--label-secondary);
+  padding: 0 6px;
+}
+
+.card-group {
+  background: var(--bg-card);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  position: relative;
+  transition: background 0.15s ease;
+  cursor: default;
+}
+.card-row + .card-row {
+  border-top: 0.5px solid var(--border-divider);
+}
+.card-row.interactive {
+  cursor: pointer;
+}
+.card-row.interactive:hover {
+  background: var(--bg-card-hover);
+}
+.card-row.interactive:active {
+  background: var(--bg-card-active);
+}
+
+.row-leading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.row-icon-box {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+.row-icon-box.blue   { background: var(--sys-blue); }
+.row-icon-box.green  { background: var(--sys-green); }
+.row-icon-box.orange { background: var(--sys-orange); }
+.row-icon-box.gray   { background: #3a3a3c; color: var(--label-secondary); }
+
+.row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-sub {
+  font-size: 12px;
+  color: var(--label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Apple Primary & Secondary Buttons ── */
+.btn-apple {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  border-radius: var(--radius-md);
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+  text-decoration: none;
+}
+.btn-apple:active {
+  transform: scale(0.98);
+  opacity: 0.85;
+}
+.btn-apple.primary {
+  background: var(--sys-blue);
+  color: #fff;
+}
+.btn-apple.primary:hover {
+  background: var(--sys-blue-hover);
+}
+.btn-apple.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--label-primary);
+  border: 0.5px solid var(--border-subtle);
+}
+.btn-apple.secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.btn-apple.danger {
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--sys-red);
+}
+
+/* ── Apple Native Toggle Switch ── */
+.ios-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex-shrink: 0;
+}
+.ios-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background: #39393d;
+  border-radius: 13px;
+  transition: background 0.25s ease;
+  cursor: pointer;
+}
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+  transition: transform 0.25s ease;
+  pointer-events: none;
+}
+.ios-switch input:checked + .switch-track {
+  background: var(--sys-green);
+}
+.ios-switch input:checked + .switch-track .switch-thumb {
+  transform: translateX(18px);
+}
+
+/* ── Recording Control Circle (Apple Camera Style) ── */
+.record-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 12px 12px;
+  gap: 10px;
+}
+
+.record-shutter {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: transparent;
+  transition: all 0.2s ease;
+  outline: none;
+}
+.record-shutter:hover {
+  border-color: #fff;
+  transform: scale(1.04);
+}
+.record-shutter:active {
+  transform: scale(0.95);
+}
+
+.shutter-inner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--sys-red);
+  transition: all 0.25s ease;
+}
+.record-shutter.recording {
+  border-color: var(--sys-red);
+  animation: pulse-ring 1.6s infinite;
+}
+.record-shutter.recording .shutter-inner {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0.5); }
+  70%  { box-shadow: 0 0 0 12px rgba(255, 69, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 69, 58, 0); }
+}
+
+.record-status-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--label-secondary);
+}
+.record-timer {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--sys-red);
+  min-height: 16px;
+}
+
+/* ── Modal QR Code (Apple Sheet Style) ── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+  padding: 20px;
+}
+.modal-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-sheet {
+  width: 100%;
+  max-width: 360px;
+  background: #1c1c1e;
+  border: 0.5px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  transform: scale(0.94);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal-backdrop.open .modal-sheet {
+  transform: scale(1);
+}
+
+.qr-box {
+  width: 200px;
+  height: 200px;
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin: 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-box canvas, .qr-box img {
+  width: 100%;
+  height: 100%;
+}
+
+.svg-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  display: inline-block;
+  vertical-align: middle;
+}
