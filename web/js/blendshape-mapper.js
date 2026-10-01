@@ -167,6 +167,48 @@ export const FACECAP_MAP = {
   tongueOut:         'tongueOut',
 };
 
+/**
+ * Extended fallback aliases for VRM, VRoid, and ARKit naming variations.
+ * @type {Record<string, string[]>}
+ */
+export const ALIASES_MAP = {
+  eyeBlinkLeft:        ['eyeBlink_L', 'eyeBlinkLeft', 'Fcl_EYE_Close_L', 'Fcl_EYE_Close', 'blink_L', 'eye_close', 'EyeBlink_L'],
+  eyeBlinkRight:       ['eyeBlink_R', 'eyeBlinkRight', 'Fcl_EYE_Close_R', 'Fcl_EYE_Close', 'blink_R', 'eye_close', 'EyeBlink_R'],
+  eyeSquintLeft:       ['eyeSquint_L', 'eyeSquintLeft', 'Fcl_EYE_Joy_L', 'Fcl_EYE_Joy', 'eye_smile'],
+  eyeSquintRight:      ['eyeSquint_R', 'eyeSquintRight', 'Fcl_EYE_Joy_R', 'Fcl_EYE_Joy', 'eye_smile'],
+  eyeWideLeft:         ['eyeWide_L', 'eyeWideLeft', 'Fcl_EYE_Surprised', 'eye_open', 'Fcl_EYE_Spread'],
+  eyeWideRight:        ['eyeWide_R', 'eyeWideRight', 'Fcl_EYE_Surprised', 'eye_open', 'Fcl_EYE_Spread'],
+  eyeLookDownLeft:     ['eyeLookDown_L', 'eyeLookDownLeft', 'look_down'],
+  eyeLookDownRight:    ['eyeLookDown_R', 'eyeLookDownRight', 'look_down'],
+  eyeLookUpLeft:       ['eyeLookUp_L', 'eyeLookUpLeft', 'look_up'],
+  eyeLookUpRight:      ['eyeLookUp_R', 'eyeLookUpRight', 'look_up'],
+  eyeLookInLeft:       ['eyeLookIn_L', 'eyeLookInLeft', 'look_right'],
+  eyeLookOutLeft:      ['eyeLookOut_L', 'eyeLookOutLeft', 'look_left'],
+  eyeLookInRight:      ['eyeLookIn_R', 'eyeLookInRight', 'look_left'],
+  eyeLookOutRight:     ['eyeLookOut_R', 'eyeLookOutRight', 'look_right'],
+  browDownLeft:        ['browDown_L', 'browDownLeft', 'Fcl_BRW_Angry', 'eye_brow_down_L', 'eye_brow_down'],
+  browDownRight:       ['browDown_R', 'browDownRight', 'Fcl_BRW_Angry', 'eye_brow_down_R', 'eye_brow_down'],
+  browInnerUp:         ['browInnerUp', 'Fcl_BRW_Surprised', 'eye_brow_up'],
+  browOuterUpLeft:     ['browOuterUp_L', 'browOuterUpLeft', 'Fcl_BRW_Joy', 'eye_brow_up_L'],
+  browOuterUpRight:    ['browOuterUp_R', 'browOuterUpRight', 'Fcl_BRW_Joy', 'eye_brow_up_R'],
+  jawOpen:             ['jawOpen', 'Fcl_MTH_A', 'mouse_open', 'lip_a'],
+  mouthClose:          ['mouthClose', 'Fcl_MTH_Close'],
+  mouthFunnel:         ['mouthFunnel', 'Fcl_MTH_O', 'lip_o'],
+  mouthPucker:         ['mouthPucker', 'Fcl_MTH_U', 'lip_u'],
+  mouthSmileLeft:      ['mouthSmile_L', 'mouthSmileLeft', 'Fcl_MTH_Joy', 'Fcl_MTH_Fun', 'face_happy'],
+  mouthSmileRight:     ['mouthSmile_R', 'mouthSmileRight', 'Fcl_MTH_Joy', 'Fcl_MTH_Fun', 'face_happy'],
+  mouthFrownLeft:      ['mouthFrown_L', 'mouthFrownLeft', 'Fcl_MTH_Sorrow', 'Fcl_MTH_Angry', 'face_sad'],
+  mouthFrownRight:     ['mouthFrown_R', 'mouthFrownRight', 'Fcl_MTH_Sorrow', 'Fcl_MTH_Angry', 'face_sad'],
+  mouthStretchLeft:    ['mouthStretch_L', 'mouthStretchLeft', 'Fcl_MTH_I', 'lip_i'],
+  mouthStretchRight:   ['mouthStretch_R', 'mouthStretchRight', 'Fcl_MTH_I', 'lip_i'],
+  mouthUpperUpLeft:    ['mouthUpperUp_L', 'mouthUpperUpLeft', 'Fcl_MTH_Up', 'lip_up'],
+  mouthUpperUpRight:   ['mouthUpperUp_R', 'mouthUpperUpRight', 'Fcl_MTH_Up', 'lip_up'],
+  mouthLowerDownLeft:  ['mouthLowerDown_L', 'mouthLowerDownLeft', 'Fcl_MTH_Down', 'lip_down'],
+  mouthLowerDownRight: ['mouthLowerDown_R', 'mouthLowerDownRight', 'Fcl_MTH_Down', 'lip_down'],
+  mouthShrugUpper:     ['mouthShrugUpper', 'Fcl_MTH_Up', 'lip_up'],
+  mouthShrugLower:     ['mouthShrugLower', 'Fcl_MTH_Down', 'lip_down'],
+};
+
 /* ─── Fuzzy Normaliser ──────────────────────────────────────────────────── */
 
 /**
@@ -179,6 +221,7 @@ export const FACECAP_MAP = {
 function normaliseName(name) {
   return name
     .toLowerCase()
+    .replace(/^face_blendshape\./i, '')
     .replace(/_l$/, '')
     .replace(/_r$/, '')
     .replace(/left$/, '')
@@ -196,7 +239,8 @@ function normaliseName(name) {
  * Matching strategy (in priority order):
  *   1. Exact match with standard MediaPipe name (e.g. `browInnerUp`)
  *   2. Exact match with the FACECAP_MAP translation (e.g. `browDown_L`)
- *   3. Fuzzy match — compare normalised base names
+ *   3. Match via ALIASES_MAP (e.g. `Fcl_EYE_Close_L`, `blink_L`)
+ *   4. Fuzzy match — compare normalised base names
  *
  * @param {import('three').Object3D} model - Root of the loaded GLTF scene
  * @returns {{
@@ -236,15 +280,19 @@ export function buildModelMap(model) {
   let matched = 0;
 
   for (const shapeName of STANDARD_BLENDSHAPES) {
-    const facecapName = FACECAP_MAP[shapeName]; // translated name (may be same)
+    const facecapName = FACECAP_MAP[shapeName];
+    const aliases = ALIASES_MAP[shapeName] || [];
+    const searchNames = [shapeName, facecapName, ...aliases].filter(Boolean);
     const targets = [];
 
-    // --- Pass 1: exact match on shape name or FACECAP_MAP name across ALL meshes ---
+    // --- Pass 1: exact match on search names across ALL meshes ---
     for (const { mesh, dict } of morphMeshes) {
-      if (shapeName in dict) {
-        targets.push({ mesh, index: dict[shapeName] });
-      } else if (facecapName && facecapName in dict) {
-        targets.push({ mesh, index: dict[facecapName] });
+      for (const sName of searchNames) {
+        if (sName in dict) {
+          if (!targets.some(t => t.mesh === mesh)) {
+            targets.push({ mesh, index: dict[sName] });
+          }
+        }
       }
     }
 
