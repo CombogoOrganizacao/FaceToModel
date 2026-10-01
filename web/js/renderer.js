@@ -218,7 +218,7 @@ export class Renderer {
       model = gltf.scene;
     }
 
-    // Ensure all materials are double-sided, properly sorted for alpha blending, and eyes rendered realistically
+    // Ensure all materials are double-sided, properly sorted for alpha blending, and eyes rendered with Unreal Engine clarity
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
@@ -229,20 +229,27 @@ export class Renderer {
             m.side = THREE.DoubleSide;
 
             const matName = (m.name || '').toLowerCase();
-            // Corrigir especificamente o problema de olhos embaçados / escuros no MetaHuman
             if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage')) {
               m.transparent = true;
-              m.opacity = 0.0; // Desativa a camada de oclusão turva sobre a íris
+              m.opacity = 0.0;
               m.depthWrite = false;
+              m.visible = false; // Desativa a camada de filme lacrimal e casca da córnea para evitar que cubra ou distorça os olhos
             } else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball')) {
-              m.roughness = 0.08; // Brilho vítreo e realista da córnea/olho
+              m.roughness = 0.04; // Reflexo especular ultra limpo e nítido
               m.metalness = 0.0;
               m.transparent = false;
+              m.opacity = 1.0;
               m.depthWrite = true;
+              if (m.color) {
+                m.color.setHex(0xffffff); // Garante esclera e íris vibrantes sem escurecimento
+              }
+              if (m.map) {
+                m.map.needsUpdate = true;
+              }
             } else if (matName.includes('eyelashes') || matName.includes('eyebrow')) {
               m.transparent = true;
               m.depthWrite = true;
-              m.alphaTest = 0.45; // Evita artefatos de classificação de transparência nos cílios e sobrancelhas
+              m.alphaTest = 0.45; // Evita artefatos de transparência nos cílios e sobrancelhas
             }
           });
         }
