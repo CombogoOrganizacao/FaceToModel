@@ -18,7 +18,7 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
 echo ""
-echo -e "${BOLD}${CYAN}  🎭  FaceToModel — Server${RESET}"
+echo -e "${BOLD}${CYAN}  FaceToModel — Server${RESET}"
 echo -e "${CYAN}  ─────────────────────────────────────────${RESET}"
 
 # ── Node.js check ─────────────────────────────────────────────────────────────
@@ -62,15 +62,13 @@ else
   echo -e "    ${YELLOW}(could not determine IP — install ifconfig or iproute2)${RESET}"
 fi
 
-# ── iPhone setup instructions ─────────────────────────────────────────────────
+# ── Smartphone setup instructions ─────────────────────────────────────────────
 echo ""
-echo -e "  ${BOLD}iPhone ARKit App Setup:${RESET}"
-echo -e "  1. Connect your iPhone to the ${BOLD}same Wi-Fi network${RESET} as this machine."
-echo -e "  2. In the iPhone app, set the WebSocket host to one of the IPs above."
-echo -e "  3. Set the port to ${BOLD}${WS_PORT}${RESET}."
-echo -e "  4. The app should connect as  ${CYAN}ws://<IP>:${WS_PORT}?role=iphone${RESET}"
+echo -e "  ${BOLD}Smartphone Setup (MediaPipe Web / P2P):${RESET}"
+echo -e "  1. Connect your smartphone to the ${BOLD}same Wi-Fi network${RESET} as this machine (or scan QR code)."
+echo -e "  2. Open the camera sensor at  ${CYAN}http://<IP>:${HTTP_PORT}/camera.html${RESET}"
 echo ""
-echo -e "  Open the browser UI at:  ${CYAN}http://<IP>:${HTTP_PORT}${RESET}"
+echo -e "  Open the Studio UI at:  ${CYAN}http://<IP>:${HTTP_PORT}${RESET}"
 echo ""
 echo -e "  ${BOLD}Press Ctrl+C to stop the server.${RESET}"
 echo -e "  ${CYAN}─────────────────────────────────────────${RESET}"

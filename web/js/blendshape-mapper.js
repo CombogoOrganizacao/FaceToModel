@@ -1,25 +1,25 @@
 /**
- * @fileoverview FaceToModel — ARKit Blendshape Mapper
+ * @fileoverview FaceToModel — MediaPipe Facial Blendshape Mapper
  *
- * Provides the canonical mapping from Apple ARKit 52-blendshape names (camelCase,
- * as sent by the iOS app) to the morph-target names used in facecap.glb and
- * compatible face models (underscore + _L/_R suffix convention).
+ * Provides the canonical mapping from standard 52-blendshape names (camelCase,
+ * as output by Google MediaPipe Face Landmarker) to morph-target names used in
+ * facecap.glb and industry standard GLTF / VRM / RPM face models (underscore + _L/_R suffix).
  *
  * Also exports helpers to build a live model map from a loaded Three.js scene
- * and to apply blendshape values to morph targets at runtime.
+ * and to apply blendshape values to morph targets in real-time.
  *
  * @module blendshape-mapper
  */
 
-/* ─── ARKit Blendshape Names (52 total) ────────────────────────────────── */
+/* ─── MediaPipe Standard Blendshape Names (52 total) ────────────────────── */
 
 /**
- * Complete list of ARKit face tracking blendshape names, in the order sent
- * by the iOS ARFaceAnchor API.
+ * Complete list of standard 52 facial blendshapes (FACS Action Units)
+ * output by Google MediaPipe FaceLandmarker.
  *
  * @type {string[]}
  */
-export const ARKIT_BLENDSHAPES = [
+export const STANDARD_BLENDSHAPES = [
   'browDownLeft',
   'browDownRight',
   'browInnerUp',
@@ -74,10 +74,11 @@ export const ARKIT_BLENDSHAPES = [
   'tongueOut',
 ];
 
-/* ─── ARKit → facecap.glb Morph Target Name Map ────────────────────────── */
+
+/* ─── MediaPipe → facecap.glb Morph Target Name Map ──────────────────────── */
 
 /**
- * Maps every ARKit blendshape name to the corresponding morph target name
+ * Maps standard blendshape names to the corresponding morph target names
  * used in facecap.glb (Three.js examples model).
  *
  * Convention:
@@ -189,20 +190,20 @@ function normaliseName(name) {
 
 /**
  * Traverse a loaded Three.js GLTF scene and build a lookup table that maps
- * each ARKit blendshape name to the mesh + morph-target index that should
+ * each standard blendshape name to the mesh + morph-target index that should
  * be driven by it.
  *
  * Matching strategy (in priority order):
- *   1. Exact match with the ARKit name (e.g. `browInnerUp`)
+ *   1. Exact match with standard MediaPipe name (e.g. `browInnerUp`)
  *   2. Exact match with the FACECAP_MAP translation (e.g. `browDown_L`)
  *   3. Fuzzy match — compare normalised base names
  *
  * @param {import('three').Object3D} model - Root of the loaded GLTF scene
  * @returns {{
- *   map: Record<string, { mesh: import('three').SkinnedMesh, index: number }>,
+ *   map: Record<string, Array<{ mesh: import('three').SkinnedMesh, index: number }>>,
  *   coverage: number,
  *   total: number,
- * }} modelMap, coverage count, and total ARKit shapes
+ * }} modelMap, coverage count, and total shapes
  */
 export function buildModelMap(model) {
   /** @type {Record<string, Array<{ mesh: import('three').SkinnedMesh, index: number }>>} */
@@ -220,7 +221,7 @@ export function buildModelMap(model) {
 
   if (morphMeshes.length === 0) {
     console.warn('[BlendshapeMapper] No morph target dictionaries found in model.');
-    return { map, coverage: 0, total: ARKIT_BLENDSHAPES.length };
+    return { map, coverage: 0, total: STANDARD_BLENDSHAPES.length };
   }
 
   // Build a flattened set of all morph names present in the model (for fuzzy)
@@ -234,14 +235,14 @@ export function buildModelMap(model) {
 
   let matched = 0;
 
-  for (const arkitName of ARKIT_BLENDSHAPES) {
-    const facecapName = FACECAP_MAP[arkitName]; // translated name (may be same)
+  for (const shapeName of STANDARD_BLENDSHAPES) {
+    const facecapName = FACECAP_MAP[shapeName]; // translated name (may be same)
     const targets = [];
 
-    // --- Pass 1: exact match on ARKit name or FACECAP_MAP name across ALL meshes ---
+    // --- Pass 1: exact match on shape name or FACECAP_MAP name across ALL meshes ---
     for (const { mesh, dict } of morphMeshes) {
-      if (arkitName in dict) {
-        targets.push({ mesh, index: dict[arkitName] });
+      if (shapeName in dict) {
+        targets.push({ mesh, index: dict[shapeName] });
       } else if (facecapName && facecapName in dict) {
         targets.push({ mesh, index: dict[facecapName] });
       }
@@ -249,11 +250,11 @@ export function buildModelMap(model) {
 
     // --- Pass 2: fuzzy normalised base comparison if not found in Pass 1 ---
     if (targets.length === 0) {
-      const normArkit   = normaliseName(arkitName);
+      const normShape   = normaliseName(shapeName);
       const normFacecap = facecapName ? normaliseName(facecapName) : null;
 
       for (const entry of allMorphEntries) {
-        if (entry.norm === normArkit || (normFacecap && entry.norm === normFacecap)) {
+        if (entry.norm === normShape || (normFacecap && entry.norm === normFacecap)) {
           // Avoid duplicate mesh additions
           if (!targets.some(t => t.mesh === entry.mesh)) {
             targets.push({ mesh: entry.mesh, index: entry.index });
@@ -263,15 +264,15 @@ export function buildModelMap(model) {
     }
 
     if (targets.length > 0) {
-      map[arkitName] = targets;
+      map[shapeName] = targets;
       matched++;
     } else {
-      console.debug(`[BlendshapeMapper] No match for ARKit "${arkitName}" (facecap: "${facecapName}")`);
+      console.debug(`[BlendshapeMapper] No match for shape "${shapeName}" (facecap: "${facecapName}")`);
     }
   }
 
-  console.log(`[BlendshapeMapper] Coverage: ${matched}/${ARKIT_BLENDSHAPES.length} blendshapes mapped across ${morphMeshes.length} meshes.`);
-  return { map, coverage: matched, total: ARKIT_BLENDSHAPES.length };
+  console.log(`[BlendshapeMapper] Coverage: ${matched}/${STANDARD_BLENDSHAPES.length} blendshapes mapped across ${morphMeshes.length} meshes.`);
+  return { map, coverage: matched, total: STANDARD_BLENDSHAPES.length };
 }
 
 /* ─── applyBlendShapes ──────────────────────────────────────────────────── */
@@ -283,7 +284,7 @@ export function buildModelMap(model) {
  * @param {Record<string, Array<{ mesh: import('three').SkinnedMesh, index: number }>>} modelMap
  *   The map returned by {@link buildModelMap}.
  * @param {Record<string, number>} blendShapes
- *   Object where each key is an ARKit blendshape name and value is in [0, 1].
+ *   Object where each key is a MediaPipe blendshape name and value is in [0, 1].
  */
 export function applyBlendShapes(modelMap, blendShapes) {
   for (const [name, value] of Object.entries(blendShapes)) {
@@ -300,7 +301,6 @@ export function applyBlendShapes(modelMap, blendShapes) {
         }
       }
     } else {
-      // Backwards compatibility with single target format
       const { mesh, index } = targets;
       if (mesh && mesh.morphTargetInfluences) {
         mesh.morphTargetInfluences[index] = clamped;

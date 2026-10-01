@@ -126,13 +126,13 @@ html, body {
   transform: scale(0.96);
 }
 
-/* ── Picture-in-Picture Smartphone Camera Preview (Canto Inferior Direito) ── */
+/* ── Picture-in-Picture Smartphone Camera Preview (Canto Superior Direito) ── */
 .pip-window {
   position: absolute;
-  bottom: 84px;
-  right: 24px;
+  top: 68px;
+  right: 20px;
   left: auto;
-  top: auto;
+  bottom: auto;
   width: 190px;
   height: 250px;
   background: rgba(18, 18, 22, 0.85);

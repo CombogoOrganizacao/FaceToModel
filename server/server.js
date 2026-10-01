@@ -4,8 +4,8 @@
  * Architecture:
  *   - express serves the /web folder as static files on port 3000
  *   - ws handles WebSocket connections on port 8080
- *   - iPhone ARKit app connects as role=iphone and streams 52 blendshape floats as JSON
- *   - Browser clients connect as role=browser and receive every frame relayed from any iPhone
+ *   - Smartphone sensor connects as role=iphone (or web client) and streams 52 blendshape floats as JSON
+ *   - Browser clients connect as role=browser and receive every frame relayed from any sensor
  *   - Each relayed message gets a server-side timestamp injected for latency measurement
  *
  * @module server
@@ -75,7 +75,7 @@ try {
 /** @type {Set<WebSocket>} All connected browser clients */
 const browserClients = new Set();
 
-/** @type {Set<WebSocket>} All connected iPhone / ARKit clients */
+/** @type {Set<WebSocket>} All connected iPhone / Smartphone sensor clients */
 const iphoneClients  = new Set();
 
 const wss = new WebSocketServer({ noServer: true });
@@ -157,7 +157,7 @@ wss.on('error', (err) => {
  * Parse and relay an iPhone blendshape payload to all connected browsers.
  * Injects a `serverTimestamp` for round-trip latency calculation in the client.
  *
- * Expected payload format from ARKit iOS app:
+ * Expected payload format from Smartphone sensor:
  * ```json
  * { "browDownLeft": 0.12, "jawOpen": 0.45, ... }
  * ```

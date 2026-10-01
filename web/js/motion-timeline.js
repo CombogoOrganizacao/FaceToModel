@@ -130,7 +130,7 @@ export class MotionTimeline {
   }
 
   /**
-   * Capture an incoming motion frame from ARKit or MediaPipe.
+   * Capture an incoming motion frame from MediaPipe face tracking.
    * @param {Record<string, number>} blendShapes
    * @param {{ pitch?: number, yaw?: number, roll?: number }|null} [rotation]
    */

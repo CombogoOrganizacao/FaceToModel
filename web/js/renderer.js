@@ -240,10 +240,10 @@ export class Renderer {
   }
 
   /**
-   * Apply a set of ARKit/MediaPipe blendshape values and head rotation to the model.
+   * Apply a set of MediaPipe blendshape values and head rotation to the model.
    * Uses continuous EMA smoothing in the render loop to eliminate camera jitter.
    *
-   * @param {Record<string, number>} blendShapes - Map of ARKit blendshape keys to scores
+   * @param {Record<string, number>} blendShapes - Map of 52 blendshape keys to scores
    * @param {{ pitch?: number, yaw?: number, roll?: number }} [rotation] - Head rotation in radians
    */
   applyBlendShapes(blendShapes, rotation = null) {
