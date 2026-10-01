@@ -16,6 +16,7 @@
 
 import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
+import { MotionTimeline } from './motion-timeline.js';
 
 /* ─── DOM Helpers ─────────────────────────────────────────────────────────── */
 
@@ -45,6 +46,7 @@ export function showToast(message, type = 'info') {
 
 let renderer = null;
 let recorder = null;
+let motionTimeline = null;
 let p2pClient = null;
 let roomId = null;
 
@@ -96,6 +98,7 @@ async function init3DEngine() {
     recorder = new Recorder(canvas);
     renderer.startLoop();
     startInspectorLoop();
+    setupTimeline();
 
     // 4. Sensor HUD & FPS Counter
     setInterval(() => {
@@ -181,12 +184,15 @@ function initP2PRoom() {
 
   // Suporte a dados avançados { blendShapes, rotation }
   p2pClient.onBlendshapesReceived = (data) => {
-    if (renderer) {
-      if (data && data.blendShapes) {
-        renderer.applyBlendShapes(data.blendShapes, data.rotation);
-      } else if (data) {
-        renderer.applyBlendShapes(data, null);
-      }
+    const shapes = (data && data.blendShapes) ? data.blendShapes : data;
+    const rot = (data && data.rotation) ? data.rotation : null;
+
+    if (motionTimeline && motionTimeline.isRecording && !motionTimeline.isPaused) {
+      motionTimeline.addFrame(shapes, rot);
+    }
+
+    if (renderer && (!motionTimeline || !motionTimeline.isPlaying)) {
+      renderer.applyBlendShapes(shapes, rot);
     }
   };
 
@@ -318,6 +324,37 @@ function setupShading() {
         showToast(`Iluminação: ${modeLabels[mode] || mode}`, 'info');
       }
     });
+  });
+
+  // Sliders de Direção de Luz e Suavidade
+  const sliderAzimuth = $('slider-light-azimuth');
+  const labelAzimuth = $('label-light-azimuth');
+  const sliderElevation = $('slider-light-elevation');
+  const labelElevation = $('label-light-elevation');
+  const sliderSmooth = $('slider-smooth-level');
+  const labelSmooth = $('label-smooth-level');
+
+  const updateLightDir = () => {
+    if (renderer) {
+      renderer.setLightDirection(sliderAzimuth.value, sliderElevation.value);
+    }
+  };
+
+  sliderAzimuth.addEventListener('input', (e) => {
+    labelAzimuth.textContent = `${e.target.value}°`;
+    updateLightDir();
+  });
+
+  sliderElevation.addEventListener('input', (e) => {
+    labelElevation.textContent = `${e.target.value}°`;
+    updateLightDir();
+  });
+
+  sliderSmooth.addEventListener('input', (e) => {
+    labelSmooth.textContent = `${e.target.value}%`;
+    if (renderer) {
+      renderer.setSmoothLevel(Number(e.target.value) / 100);
+    }
   });
 }
 
@@ -636,7 +673,11 @@ function runLocalLoop() {
         rotation = { pitch: -pitch * 0.75, yaw: yaw * 0.75, roll: -roll * 0.75 };
       }
 
-      if (renderer) {
+      if (motionTimeline && motionTimeline.isRecording && !motionTimeline.isPaused) {
+        motionTimeline.addFrame(blendShapesMap, rotation);
+      }
+
+      if (renderer && (!motionTimeline || !motionTimeline.isPlaying)) {
         renderer.applyBlendShapes(blendShapesMap, rotation);
       }
     }
@@ -667,6 +708,9 @@ function setupRecording() {
     if (!recorder.isRecording) {
       try {
         await recorder.startRecording(selectedAudioDeviceId);
+        if (motionTimeline && !motionTimeline.isRecording) {
+          motionTimeline.startRecording();
+        }
         shutter.classList.add('recording');
         label.textContent = 'Parar Gravação';
         showToast('Gravação em MP4 iniciada', 'info');
@@ -674,6 +718,9 @@ function setupRecording() {
         showToast('Erro ao iniciar gravação: ' + err.message, 'error');
       }
     } else {
+      if (motionTimeline && motionTimeline.isRecording) {
+        motionTimeline.stop();
+      }
       const url = await recorder.stopRecording();
       shutter.classList.remove('recording');
       label.textContent = 'Gravar em MP4';
@@ -715,6 +762,249 @@ function setupRecording() {
     if (e.target === previewModal) {
       previewModal.classList.remove('open');
       videoPlayer.pause();
+    }
+  });
+}
+
+/* ─── Blender-Style Bottom Motion Timeline ────────────────────────────────── */
+
+function setupTimeline() {
+  const btnRec = $('btn-tl-rec');
+  const btnPause = $('btn-tl-pause');
+  const btnStop = $('btn-tl-stop');
+  const btnPlay = $('btn-tl-play');
+  const iconPlay = $('icon-tl-play');
+  const btnLoop = $('btn-tl-loop');
+  const btnClear = $('btn-tl-clear');
+  const btnExport = $('btn-tl-export');
+
+  const timeCurrent = $('tl-time-current');
+  const timeTotal = $('tl-time-total');
+  const frameBadge = $('tl-frame-badge');
+
+  const trackArea = $('tl-track-area');
+  const trimRange = $('tl-trim-range');
+  const handleIn = $('tl-handle-in');
+  const handleOut = $('tl-handle-out');
+  const playhead = $('tl-playhead');
+
+  motionTimeline = new MotionTimeline({
+    onApplyFrame: (blendShapes, rotation) => {
+      if (renderer) {
+        renderer.applyBlendShapes(blendShapes, rotation);
+      }
+    },
+    onStateChange: (state) => {
+      // 1. Botão Gravar / Rec
+      if (state.isRecording && !state.isPaused) {
+        btnRec.classList.add('recording');
+        btnRec.title = 'Pausar Gravação';
+      } else {
+        btnRec.classList.remove('recording');
+        btnRec.title = state.frameCount > 0 ? 'Continuar Gravação' : 'Gravar Movimento';
+      }
+
+      // 2. Botão Play / Pause
+      if (state.isPlaying) {
+        btnPlay.classList.add('playing');
+        iconPlay.innerHTML = `
+          <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/>
+          <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/>
+        `;
+      } else {
+        btnPlay.classList.remove('playing');
+        iconPlay.innerHTML = `
+          <polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>
+        `;
+      }
+
+      // 3. Botão Loop
+      if (state.isLooping) {
+        btnLoop.classList.add('active');
+      } else {
+        btnLoop.classList.remove('active');
+      }
+
+      // 4. Leituras de Tempo e Frame
+      timeCurrent.textContent = MotionTimeline.formatTime(state.currentTime);
+      timeTotal.textContent = MotionTimeline.formatTime(state.totalDuration);
+      const curFrame = Math.round(state.currentTime * 30);
+      frameBadge.textContent = `Quadro ${curFrame} (${state.frameCount} gravados)`;
+
+      // 5. Cursor Scrubber (Playhead)
+      const pct = state.totalDuration > 0 ? (state.currentTime / state.totalDuration) * 100 : 0;
+      playhead.style.left = `${Math.max(0, Math.min(100, pct))}%`;
+
+      // 6. Faixa e Alças de Trim
+      const inPct = state.totalDuration > 0 ? (state.trimIn / state.totalDuration) * 100 : 0;
+      const outPct = state.totalDuration > 0 ? (state.trimOut / state.totalDuration) * 100 : 100;
+
+      handleIn.style.left = `${inPct}%`;
+      handleOut.style.left = `${outPct}%`;
+      trimRange.style.left = `${inPct}%`;
+      trimRange.style.width = `${Math.max(0, outPct - inPct)}%`;
+    },
+  });
+
+  // Botão Gravar / Continuar
+  btnRec.addEventListener('click', () => {
+    if (motionTimeline.isRecording && !motionTimeline.isPaused) {
+      motionTimeline.pause();
+      showToast('Gravação pausada na timeline', 'info');
+    } else {
+      motionTimeline.startRecording();
+      showToast(motionTimeline.isPaused ? 'Continuando gravação...' : 'Gravando movimentos na timeline...', 'success');
+    }
+  });
+
+  // Botão Pausar
+  btnPause.addEventListener('click', () => {
+    motionTimeline.pause();
+    showToast('Timeline pausada', 'info');
+  });
+
+  // Botão Parar
+  btnStop.addEventListener('click', () => {
+    motionTimeline.stop();
+    showToast('Gravação finalizada. Playhead no início do trecho.', 'info');
+  });
+
+  // Botão Play / Pause
+  btnPlay.addEventListener('click', () => {
+    if (motionTimeline.frames.length < 2) {
+      showToast('Grave movimentos primeiro usando o botão Gravar (⏺)', 'info');
+      return;
+    }
+    motionTimeline.togglePlay();
+  });
+
+  // Botão Loop
+  btnLoop.addEventListener('click', () => {
+    motionTimeline.setLooping(!motionTimeline.isLooping);
+  });
+
+  // Botão Limpar
+  btnClear.addEventListener('click', () => {
+    motionTimeline.clear();
+    showToast('Timeline limpa. Pronto para novo take.', 'info');
+  });
+
+  // Botão Exportar MP4 do Trecho Recortado
+  btnExport.addEventListener('click', async () => {
+    if (!recorder || motionTimeline.frames.length < 2) {
+      showToast('Grave um trecho na timeline antes de exportar.', 'info');
+      return;
+    }
+
+    try {
+      showToast('Renderizando trecho selecionado em MP4...', 'info');
+      btnExport.disabled = true;
+      btnExport.innerHTML = `<span>Gravando...</span>`;
+
+      motionTimeline.pausePlayback();
+      motionTimeline.scrub(motionTimeline.trimIn);
+
+      await recorder.startRecording(selectedAudioDeviceId);
+
+      const startT = performance.now();
+      const trimDuration = motionTimeline.trimOut - motionTimeline.trimIn;
+
+      const renderStep = async () => {
+        const elapsed = (performance.now() - startT) / 1000;
+        const currentTargetTime = motionTimeline.trimIn + elapsed;
+
+        if (currentTargetTime < motionTimeline.trimOut) {
+          motionTimeline.scrub(currentTargetTime);
+          requestAnimationFrame(renderStep);
+        } else {
+          motionTimeline.scrub(motionTimeline.trimOut);
+          const url = await recorder.stopRecording();
+          recorder.downloadRecording(`FaceToModel_Take_${Date.now()}.mp4`);
+          btnExport.disabled = false;
+          btnExport.innerHTML = `
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Exportar</span>
+          `;
+          showToast('Vídeo MP4 exportado com sucesso!', 'success');
+        }
+      };
+
+      requestAnimationFrame(renderStep);
+    } catch (err) {
+      console.error('[Export Error]', err);
+      btnExport.disabled = false;
+      btnExport.innerHTML = `
+        <svg class="svg-icon sm" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Exportar</span>
+      `;
+      showToast('Erro ao exportar vídeo: ' + err.message, 'error');
+    }
+  });
+
+  // Scrubbing interativo com Mouse / Touch
+  let isDraggingScrubber = false;
+  let isDraggingHandleIn = false;
+  let isDraggingHandleOut = false;
+
+  const getTimeFromEvent = (e) => {
+    const rect = trackArea.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const ratio = rect.width > 0 ? x / rect.width : 0;
+    return ratio * motionTimeline.totalDuration;
+  };
+
+  trackArea.addEventListener('pointerdown', (e) => {
+    if (e.target === handleIn || handleIn.contains(e.target)) {
+      isDraggingHandleIn = true;
+      e.preventDefault();
+      return;
+    }
+    if (e.target === handleOut || handleOut.contains(e.target)) {
+      isDraggingHandleOut = true;
+      e.preventDefault();
+      return;
+    }
+    isDraggingScrubber = true;
+    motionTimeline.pausePlayback();
+    const time = getTimeFromEvent(e);
+    motionTimeline.scrub(time);
+    e.preventDefault();
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (isDraggingScrubber) {
+      const time = getTimeFromEvent(e);
+      motionTimeline.scrub(time);
+    } else if (isDraggingHandleIn) {
+      const time = getTimeFromEvent(e);
+      motionTimeline.setTrim(time, motionTimeline.trimOut);
+    } else if (isDraggingHandleOut) {
+      const time = getTimeFromEvent(e);
+      motionTimeline.setTrim(motionTimeline.trimIn, time);
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    isDraggingScrubber = false;
+    isDraggingHandleIn = false;
+    isDraggingHandleOut = false;
+  });
+
+  // Teclas de Atalho de Estúdio (Espaço para Play/Pause, R para Gravar)
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (motionTimeline.frames.length >= 2) {
+        motionTimeline.togglePlay();
+      }
+    } else if (e.code === 'KeyR') {
+      e.preventDefault();
+      btnRec.click();
     }
   });
 }

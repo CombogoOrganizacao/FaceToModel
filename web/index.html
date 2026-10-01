@@ -63,7 +63,7 @@
       <span id="hud-text">Aguardando Sensor da Câmera (0 FPS)</span>
     </div>
 
-    <!-- Picture-in-Picture da Câmera do Smartphone (Canto Inferior Direito) -->
+    <!-- ── Picture-in-Picture da Câmera do Smartphone ── -->
     <div class="pip-window hidden" id="pip-container">
       <div class="pip-header">
         <div class="pip-title">
@@ -80,6 +80,90 @@
       <div class="pip-body">
         <video id="pip-video" autoplay playsinline muted></video>
         <div class="pip-empty" id="pip-empty">Conecte o smartphone via QR Code</div>
+      </div>
+    </div>
+
+    <!-- ── Timeline Inferior Estilo Blender ── -->
+    <div class="timeline-dock" id="timeline-dock">
+      <!-- 1. Controles de Transporte (Esquerda) -->
+      <div class="tl-transport">
+        <button class="tl-btn rec" id="btn-tl-rec" title="Gravar / Continuar Movimento">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="7" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="tl-btn" id="btn-tl-pause" title="Pausar Gravação ou Reprodução">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/>
+            <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="tl-btn" id="btn-tl-stop" title="Parar e Retornar ao Início">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/>
+          </svg>
+        </button>
+        <div class="tl-divider"></div>
+        <button class="tl-btn play" id="btn-tl-play" title="Reproduzir / Pausar Movimento (Espaço)">
+          <svg class="svg-icon sm" id="icon-tl-play" viewBox="0 0 24 24">
+            <polygon points="6 4 20 12 6 20 6 4" fill="currentColor"/>
+          </svg>
+        </button>
+        <button class="tl-btn active" id="btn-tl-loop" title="Repetir em Loop">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polyline points="17 1 21 5 17 9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 2. Display de Tempo & Régua Interativa (Centro) -->
+      <div class="tl-center">
+        <div class="tl-readout">
+          <div class="tl-time-group">
+            <span class="tl-time-current" id="tl-time-current">00:00.00</span>
+            <span class="tl-time-sep">/</span>
+            <span class="tl-time-total" id="tl-time-total">00:00.00</span>
+          </div>
+          <div class="tl-badge-frame" id="tl-frame-badge">Quadro 0 (0 gravados)</div>
+        </div>
+
+        <div class="tl-track-area" id="tl-track-area">
+          <div class="tl-track-ticks" id="tl-ticks"></div>
+          <div class="tl-trim-highlight" id="tl-trim-range"></div>
+
+          <div class="tl-trim-handle in" id="tl-handle-in" title="Ponto de Entrada (Trim In)">
+            <div class="tl-handle-grip"></div>
+          </div>
+
+          <div class="tl-trim-handle out" id="tl-handle-out" title="Ponto de Saída (Trim Out)">
+            <div class="tl-handle-grip"></div>
+          </div>
+
+          <div class="tl-playhead" id="tl-playhead">
+            <div class="tl-playhead-head"></div>
+            <div class="tl-playhead-line"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Ações da Timeline (Direita) -->
+      <div class="tl-actions">
+        <button class="tl-action-btn secondary" id="btn-tl-clear" title="Limpar Timeline e Iniciar Novo Take">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+          </svg>
+          <span>Limpar</span>
+        </button>
+
+        <button class="tl-action-btn primary" id="btn-tl-export" title="Exportar Trecho Selecionado em MP4">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Exportar</span>
+        </button>
       </div>
     </div>
   </div>
@@ -125,24 +209,50 @@
         <div class="accordion-content">
           <span class="accordion-sublabel">Modelos Pré-configurados (ARKit 52)</span>
           <div class="model-presets-grid" id="model-presets">
-            <button class="model-preset-pill active" data-model="facecap" data-url="/models/facecap.glb">
-              <span class="model-pill-icon">🎭</span>
+            <button class="model-preset-pill active" data-model="facecap" data-url="/models/facecap.glb" title="Modelo Padrão FaceCap">
+              <span class="model-pill-icon">
+                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a9 11 0 0 0-9 11c0 5 4 9 9 9s9-4 9-9A9 11 0 0 0 12 2z"/>
+                  <path d="M8 10h.01M16 10h.01M9 15c1 1 5 1 6 0"/>
+                </svg>
+              </span>
               <span class="model-pill-text">Padrão</span>
             </button>
-            <button class="model-preset-pill" data-model="anime" data-url="/models/anime.glb">
-              <span class="model-pill-icon">🌸</span>
+            <button class="model-preset-pill" data-model="anime" data-url="/models/anime.glb" title="Modelo Anime Sparkle">
+              <span class="model-pill-icon">
+                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2l2.4 5.6L20 10l-4.4 3.6 1.4 5.8L12 16.6 7 19.4l1.4-5.8L4 10l5.6-2.4z"/>
+                </svg>
+              </span>
               <span class="model-pill-text">Anime</span>
             </button>
-            <button class="model-preset-pill" data-model="metahuman" data-url="/models/metahuman.glb">
-              <span class="model-pill-icon">👤</span>
+            <button class="model-preset-pill" data-model="metahuman" data-url="/models/metahuman.glb" title="Modelo Humanoide Realista">
+              <span class="model-pill-icon">
+                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="7" r="4"/>
+                  <path d="M5.5 21a8.5 8.5 0 0 1 13 0"/>
+                  <path d="M12 11v3"/>
+                </svg>
+              </span>
               <span class="model-pill-text">Realista</span>
             </button>
-            <button class="model-preset-pill" data-model="stylized" data-url="/models/stylized.glb">
-              <span class="model-pill-icon">⚡️</span>
+            <button class="model-preset-pill" data-model="stylized" data-url="/models/stylized.glb" title="Modelo Estilizado / Hero">
+              <span class="model-pill-icon">
+                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+              </span>
               <span class="model-pill-text">Estilizado</span>
             </button>
-            <button class="model-preset-pill" data-model="furry" data-url="/models/raccoon.glb">
-              <span class="model-pill-icon">🦊</span>
+            <button class="model-preset-pill" data-model="furry" data-url="/models/raccoon.glb" title="Modelo Furry Raccoon">
+              <span class="model-pill-icon">
+                <svg class="svg-icon sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 8l3-5 5 4 5-4 3 5c2 4 1 9-3 12a11 11 0 0 1-10 0C3 17 2 12 4 8z"/>
+                  <circle cx="9" cy="12" r="1" fill="currentColor"/>
+                  <circle cx="15" cy="12" r="1" fill="currentColor"/>
+                  <path d="M11 15h2"/>
+                </svg>
+              </span>
               <span class="model-pill-text">Furry</span>
             </button>
           </div>
@@ -223,6 +333,33 @@
               <span class="shading-dot" style="background: #8e8e93;"></span>
               Wireframe
             </button>
+          </div>
+
+          <!-- Controles de Direção de Luz & Intensidade Suave -->
+          <div class="shading-controls-group" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div class="slider-control-group">
+              <div class="slider-header">
+                <span class="slider-title">Ângulo da Luz (Azimute)</span>
+                <span class="slider-value" id="label-light-azimuth">45°</span>
+              </div>
+              <input type="range" id="slider-light-azimuth" min="0" max="360" value="45" step="1" class="apple-slider" />
+            </div>
+
+            <div class="slider-control-group">
+              <div class="slider-header">
+                <span class="slider-title">Elevação da Luz</span>
+                <span class="slider-value" id="label-light-elevation">35°</span>
+              </div>
+              <input type="range" id="slider-light-elevation" min="-30" max="90" value="35" step="1" class="apple-slider" />
+            </div>
+
+            <div class="slider-control-group" id="group-smooth-level">
+              <div class="slider-header">
+                <span class="slider-title">Intensidade do Suave</span>
+                <span class="slider-value" id="label-smooth-level">85%</span>
+              </div>
+              <input type="range" id="slider-smooth-level" min="0" max="100" value="85" step="1" class="apple-slider" />
+            </div>
           </div>
 
           <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
@@ -423,10 +560,6 @@
               </svg>
               Baixar Gravação (.mp4)
             </button>
-          </div>
-
-          <div class="preview-container hidden" id="preview-wrapper" style="margin-top: 10px;">
-            <video id="preview-player" controls playsinline></video>
           </div>
         </div>
       </div>

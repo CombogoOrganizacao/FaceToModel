@@ -121,6 +121,9 @@ export class Renderer {
     this._fpsLast = performance.now();
     this._running = false;
     this._currentShadingMode = 'studio';
+    this._lightAzimuth = 45;
+    this._lightElevation = 35;
+    this._smoothLevel = 0.85;
 
     /* ── Organic Smoothing & 3DoF Rotation ── */
     this._targetBlendshapes = {};
@@ -216,10 +219,15 @@ export class Renderer {
     this._modelMap          = map;
     this.blendshapeCoverage = coverage;
 
-    // Cache original materials for shading modes
+    // Cache original materials and normals for non-destructive shading modes
     model.traverse((node) => {
-      if (node.isMesh && node.material) {
-        node.userData.originalMaterial = node.material;
+      if (node.isMesh) {
+        if (node.geometry && node.geometry.attributes && node.geometry.attributes.normal) {
+          node.userData.originalNormals = node.geometry.attributes.normal.clone();
+        }
+        if (node.material) {
+          node.userData.originalMaterial = node.material;
+        }
       }
     });
 
@@ -366,6 +374,14 @@ export class Renderer {
 
     if (!this._model) return;
 
+    // Restore original normals non-destructively on all meshes
+    this._model.traverse((node) => {
+      if (node.isMesh && node.geometry && node.geometry.attributes && node.geometry.attributes.normal && node.userData.originalNormals) {
+        node.geometry.attributes.normal.copy(node.userData.originalNormals);
+        node.geometry.attributes.normal.needsUpdate = true;
+      }
+    });
+
     // Apply materials
     this._model.traverse((node) => {
       if (node.isMesh) {
@@ -403,18 +419,18 @@ export class Renderer {
           node.material = node.userData.toonMaterial;
           node.material.wireframe = false;
         } else if (mode === 'smooth') {
-          if (node.geometry && typeof node.geometry.computeVertexNormals === 'function') {
-            node.geometry.computeVertexNormals();
-          }
+          // Non-destructive smooth wrap without modifying geometry normals
           if (!node.userData.smoothMaterial) {
             const baseMat = Array.isArray(orig) ? orig[0] : orig;
             node.userData.smoothMaterial = new THREE.MeshStandardMaterial({
               color: (baseMat && baseMat.color) ? baseMat.color.clone() : new THREE.Color(0xffffff),
               map: (baseMat && baseMat.map) ? baseMat.map : null,
-              roughness: 0.92,
-              metalness: 0.0,
+              roughness: 0.45 + (this._smoothLevel * 0.5),
+              metalness: 0.02,
               wireframe: false,
             });
+          } else {
+            node.userData.smoothMaterial.roughness = 0.45 + (this._smoothLevel * 0.5);
           }
           node.material = node.userData.smoothMaterial;
           node.material.wireframe = false;
@@ -430,6 +446,47 @@ export class Renderer {
         }
       }
     });
+
+    // Reapply user's light direction
+    this._updateLightPosition();
+  }
+
+  /**
+   * Set directional light orientation around the model.
+   * @param {number} azimuthDeg - Horizontal angle (0° to 360°)
+   * @param {number} elevationDeg - Vertical angle (-30° to 90°)
+   */
+  setLightDirection(azimuthDeg, elevationDeg) {
+    this._lightAzimuth = Number(azimuthDeg);
+    this._lightElevation = Number(elevationDeg);
+    this._updateLightPosition();
+  }
+
+  /**
+   * Set smoothness level for smooth shader (0.0 to 1.0).
+   * @param {number} level - 0.0 to 1.0
+   */
+  setSmoothLevel(level) {
+    this._smoothLevel = Math.max(0, Math.min(1, Number(level)));
+    if (!this._model) return;
+    this._model.traverse((node) => {
+      if (node.isMesh && node.userData.smoothMaterial) {
+        node.userData.smoothMaterial.roughness = 0.45 + (this._smoothLevel * 0.5);
+      }
+    });
+  }
+
+  _updateLightPosition() {
+    if (!this._keyLight) return;
+    const radAzimuth = (this._lightAzimuth * Math.PI) / 180;
+    const radElev = (this._lightElevation * Math.PI) / 180;
+    const dist = 3.2;
+
+    const x = dist * Math.cos(radElev) * Math.sin(radAzimuth);
+    const y = dist * Math.sin(radElev);
+    const z = dist * Math.cos(radElev) * Math.cos(radAzimuth);
+
+    this._keyLight.position.set(x, y, z);
   }
 
   /**
@@ -475,6 +532,8 @@ export class Renderer {
     this._rimLight = new THREE.DirectionalLight(0xaa88ff, 0.8);
     this._rimLight.position.set(0, 1.0, -2.0);
     this._scene.add(this._rimLight);
+
+    this._updateLightPosition();
   }
 
   _loop() {

@@ -129,7 +129,7 @@ html, body {
 /* ── Picture-in-Picture Smartphone Camera Preview (Canto Inferior Direito) ── */
 .pip-window {
   position: absolute;
-  bottom: 24px;
+  bottom: 84px;
   right: 24px;
   left: auto;
   top: auto;
@@ -1088,4 +1088,299 @@ html, body {
   border-radius: 3px;
   transition: width 0.08s ease;
 }
+
+/* ─── Blender-Style Motion Timeline Dock ─────────────────────────────────── */
+.timeline-dock {
+  position: absolute;
+  bottom: 16px;
+  left: 20px;
+  right: 20px;
+  height: 64px;
+  background: rgba(16, 17, 24, 0.82);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 16px;
+  z-index: 40;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 1. Transport Controls */
+.tl-transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tl-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--label-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tl-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tl-btn:active {
+  transform: scale(0.94);
+}
+
+.tl-btn.rec {
+  color: var(--sys-red);
+}
+
+.tl-btn.rec:hover {
+  background: rgba(255, 69, 58, 0.2);
+  color: #ff6961;
+}
+
+.tl-btn.rec.recording {
+  background: var(--sys-red);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(255, 69, 58, 0.6);
+  animation: pulse-rec 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-rec {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+}
+
+.tl-btn.play {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.tl-btn.play:hover {
+  background: rgba(99, 102, 241, 0.3);
+  color: #fff;
+}
+
+.tl-btn.play.playing {
+  background: #6366f1;
+  color: #fff;
+}
+
+.tl-btn.active {
+  color: var(--sys-blue);
+  border-color: rgba(10, 132, 255, 0.3);
+}
+
+.tl-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 2px;
+}
+
+/* 2. Timeline Center Track & Ruler */
+.tl-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tl-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.tl-time-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tl-time-current {
+  color: #fff;
+  font-weight: 600;
+}
+
+.tl-time-sep {
+  color: var(--label-tertiary);
+}
+
+.tl-time-total {
+  color: var(--label-secondary);
+}
+
+.tl-badge-frame {
+  color: var(--label-tertiary);
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Track Area */
+.tl-track-area {
+  position: relative;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.tl-track-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.06) 0,
+    rgba(255, 255, 255, 0.06) 1px,
+    transparent 1px,
+    transparent 20px
+  );
+}
+
+.tl-trim-highlight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0%;
+  width: 100%;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.18) 0%, rgba(99, 102, 241, 0.08) 100%);
+  border-top: 1.5px solid rgba(129, 140, 248, 0.6);
+  border-bottom: 1.5px solid rgba(129, 140, 248, 0.6);
+  pointer-events: none;
+}
+
+.tl-trim-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  background: rgba(129, 140, 248, 0.85);
+  cursor: ew-resize;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.tl-trim-handle:hover {
+  background: #a5b4fc;
+}
+
+.tl-trim-handle.in {
+  left: 0%;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.tl-trim-handle.out {
+  right: 0%;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+  transform: translateX(100%);
+}
+
+.tl-handle-grip {
+  width: 2px;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 1px;
+}
+
+.tl-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0%;
+  width: 2px;
+  background: #ff453a;
+  z-index: 20;
+  pointer-events: none;
+  transform: translateX(-50%);
+  box-shadow: 0 0 8px rgba(255, 69, 58, 0.8);
+}
+
+.tl-playhead-head {
+  position: absolute;
+  top: -2px;
+  left: -4px;
+  width: 10px;
+  height: 8px;
+  background: #ff453a;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* 3. Action Buttons */
+.tl-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tl-action-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.tl-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--label-secondary);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+}
+
+.tl-action-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.tl-action-btn.primary {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.tl-action-btn.primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
+}
+
+.tl-action-btn:active {
+  transform: scale(0.96);
+}
+
 
