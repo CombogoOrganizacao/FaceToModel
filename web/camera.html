@@ -243,23 +243,26 @@
       // 0. Screen Wake Lock
       await requestWakeLock();
 
-      // 1. Inicializar P2P
+      // 1. Iniciar Câmera do Smartphone
+      loaderTitle.textContent = 'Acessando Câmera...';
+      loaderSub.textContent = 'Toque em Permitir no Safari';
+      const camStream = await setupCamera();
+
+      // 2. Inicializar P2P com envio garantido do stream
       p2pClient = new P2PClient(roomHash, false);
       p2pClient.onPeerJoinCallback = () => {
         p2pDot.className = 'pill-dot connected';
         p2pLabel.textContent = 'Conectado ✓';
+        if (camStream) {
+          p2pClient.sendStream(camStream);
+        }
       };
       p2pClient.onPeerLeaveCallback = () => {
         p2pDot.className = 'pill-dot';
         p2pLabel.textContent = 'Desconectado';
       };
       p2pClient.connect();
-
-      // 2. Iniciar Câmera
-      loaderTitle.textContent = 'Acessando Câmera...';
-      loaderSub.textContent = 'Toque em Permitir no Safari';
-      const camStream = await setupCamera();
-      if (p2pClient && camStream) {
+      if (camStream) {
         p2pClient.sendStream(camStream);
       }
 

@@ -928,12 +928,17 @@ function setupTimeline() {
     showToast('Timeline limpa. Pronto para novo take.', 'info');
   });
 
-  // Botão Exportar MP4 do Trecho Recortado
+  // Botão Exportar MP4 do Trecho Recortado em 1080p 60 FPS
   btnExport.addEventListener('click', async () => {
     if (!recorder || motionTimeline.frames.length < 2) {
       showToast('Grave um trecho na timeline antes de exportar.', 'info');
       return;
     }
+
+    const renderModal = $('modal-render-progress');
+    const gaugeCircle = $('render-gauge-circle');
+    const gaugePct = $('render-gauge-pct');
+    const gaugeEta = $('render-gauge-eta');
 
     const previewModal = $('modal-video-preview');
     const videoPlayer = /** @type {HTMLVideoElement} */ ($('preview-video-player'));
@@ -941,28 +946,65 @@ function setupTimeline() {
     const btnDiscard = $('btn-discard-recording');
     const durationLabel = $('preview-duration-label');
 
+    const CIRCUMFERENCE = 2 * Math.PI * 50; // ~314.159
+
     try {
-      showToast('Renderizando trecho selecionado em MP4...', 'info');
       btnExport.disabled = true;
 
-      motionTimeline.pausePlayback();
-      motionTimeline.scrub(motionTimeline.trimIn);
+      // 1. Bloqueia a interface exibindo o Modal de Renderização Circular
+      if (gaugeCircle) gaugeCircle.style.strokeDashoffset = `${CIRCUMFERENCE}`;
+      if (gaugePct) gaugePct.textContent = '0%';
+      if (gaugeEta) gaugeEta.textContent = 'Iniciando 1080p...';
+      if (renderModal) renderModal.classList.add('open');
 
+      motionTimeline.pausePlayback();
+
+      // 2. Coloca o WebGL em modo 1080p Full HD (1920x1080)
+      if (renderer) {
+        renderer.setExport1080p(true);
+      }
+
+      await new Promise((r) => setTimeout(r, 60)); // Permite ao WebGL aplicar o buffer 1080p
+
+      // 3. Inicia o Recorder em 60 FPS
       await recorder.startRecording(selectedAudioDeviceId);
 
+      const trimDuration = Math.max(0.1, motionTimeline.trimOut - motionTimeline.trimIn);
       const startT = performance.now();
-      const trimDuration = motionTimeline.trimOut - motionTimeline.trimIn;
 
       const renderStep = async () => {
         const elapsed = (performance.now() - startT) / 1000;
         const currentTargetTime = motionTimeline.trimIn + elapsed;
+        const progress = Math.min(1.0, elapsed / trimDuration);
+
+        // Atualiza a gauge circular e porcentagem central
+        const offset = CIRCUMFERENCE * (1 - progress);
+        if (gaugeCircle) gaugeCircle.style.strokeDashoffset = `${offset}`;
+        const pctNumber = Math.round(progress * 100);
+        if (gaugePct) gaugePct.textContent = `${pctNumber}%`;
+
+        const remainingSec = Math.max(0, trimDuration - elapsed);
+        if (gaugeEta) gaugeEta.textContent = `${remainingSec.toFixed(1)}s restantes`;
 
         if (currentTargetTime < motionTimeline.trimOut) {
           motionTimeline.scrub(currentTargetTime);
           requestAnimationFrame(renderStep);
         } else {
           motionTimeline.scrub(motionTimeline.trimOut);
+          if (gaugeCircle) gaugeCircle.style.strokeDashoffset = '0';
+          if (gaugePct) gaugePct.textContent = '100%';
+          if (gaugeEta) gaugeEta.textContent = 'Finalizando...';
+
           const url = await recorder.stopRecording();
+
+          // Restaura a resolução da tela
+          if (renderer) {
+            renderer.setExport1080p(false);
+          }
+
+          // Fecha o modal de bloqueio
+          if (renderModal) renderModal.classList.remove('open');
+
           btnExport.disabled = false;
           btnExport.innerHTML = `
             <svg class="svg-icon sm" viewBox="0 0 24 24">
@@ -979,10 +1021,10 @@ function setupTimeline() {
             videoPlayer.play().catch(() => {});
 
             btnSave.onclick = () => {
-              recorder.downloadRecording(`FaceToModel_Take_${Date.now()}.mp4`);
+              recorder.downloadRecording(`FaceToModel_1080p_${Date.now()}.mp4`);
               previewModal.classList.remove('open');
               videoPlayer.pause();
-              showToast('Vídeo MP4 salvo com sucesso!', 'success');
+              showToast('Vídeo 1080p salvo com sucesso!', 'success');
             };
 
             btnDiscard.onclick = () => {
@@ -992,8 +1034,8 @@ function setupTimeline() {
               showToast('Exportação descartada', 'info');
             };
           } else {
-            recorder.downloadRecording(`FaceToModel_Take_${Date.now()}.mp4`);
-            showToast('Vídeo MP4 exportado com sucesso!', 'success');
+            recorder.downloadRecording(`FaceToModel_1080p_${Date.now()}.mp4`);
+            showToast('Vídeo 1080p exportado com sucesso!', 'success');
           }
         }
       };
@@ -1001,6 +1043,8 @@ function setupTimeline() {
       requestAnimationFrame(renderStep);
     } catch (err) {
       console.error('[Export Error]', err);
+      if (renderer) renderer.setExport1080p(false);
+      if (renderModal) renderModal.classList.remove('open');
       btnExport.disabled = false;
       btnExport.innerHTML = `
         <svg class="svg-icon sm" viewBox="0 0 24 24">

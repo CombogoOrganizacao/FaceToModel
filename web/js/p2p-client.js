@@ -33,7 +33,7 @@ export class P2PClient {
     this.onBlendshapesReceived = null;
     this.onPeerJoinCallback = null;
     this.onPeerLeaveCallback = null;
-    this.onPeerStreamCallback = null;
+    this.activeStream = null;
     this.connectedPeers = new Set();
   }
 
@@ -71,6 +71,9 @@ export class P2PClient {
     const handleJoin = (peerId) => {
       console.log(`[P2P] Dispositivo conectado: ${peerId}`);
       this.connectedPeers.add(peerId);
+      if (this.activeStream) {
+        this.sendStream(this.activeStream);
+      }
       if (this.onPeerJoinCallback) this.onPeerJoinCallback(peerId);
     };
 
@@ -109,6 +112,7 @@ export class P2PClient {
    * @param {MediaStream} stream
    */
   sendStream(stream) {
+    this.activeStream = stream;
     if (this.room && typeof this.room.addStream === 'function') {
       try {
         this.room.addStream(stream);

@@ -532,11 +532,38 @@
   </div>
 </div>
 
+<!-- ── Modal Renderização de Vídeo 1080p (Bloqueio Total) ── -->
+<div class="modal-backdrop modal-render-lock" id="modal-render-progress">
+  <div class="modal-sheet render-sheet">
+    <div class="render-gauge-container">
+      <svg class="render-gauge-svg" viewBox="0 0 120 120">
+        <circle class="gauge-bg" cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/>
+        <circle class="gauge-progress" id="render-gauge-circle" cx="60" cy="60" r="50" fill="none" stroke="url(#gauge-grad)" stroke-width="8" stroke-linecap="round" stroke-dasharray="314.159" stroke-dashoffset="314.159" transform="rotate(-90 60 60)"/>
+        <defs>
+          <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#6366f1"/>
+            <stop offset="100%" stop-color="#06b6d4"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="render-gauge-center">
+        <span class="render-pct" id="render-gauge-pct">0%</span>
+        <span class="render-eta" id="render-gauge-eta">Aguarde...</span>
+      </div>
+    </div>
+
+    <h3 style="font-size: 17px; font-weight: 600; color: #fff; margin-top: 18px;">Renderizando Vídeo 1080p (60 FPS)</h3>
+    <p style="font-size: 13px; color: var(--label-secondary); margin-top: 6px; line-height: 1.4; max-width: 280px;">
+      Exportando quadros de alta fidelidade. A interface está temporariamente bloqueada para garantir a estabilidade.
+    </p>
+  </div>
+</div>
+
 <!-- ── Modal Preview de Gravação ── -->
 <div class="modal-backdrop" id="modal-video-preview">
   <div class="modal-sheet video-preview-sheet">
     <div class="video-preview-header">
-      <h3 style="font-size: 17px; font-weight: 600; color: #fff;">Gravação Concluída</h3>
+      <h3 style="font-size: 17px; font-weight: 600; color: #fff;">Gravação Concluída (1080p 60 FPS)</h3>
       <span style="font-size: 13px; color: var(--label-secondary); font-family: var(--font-mono);" id="preview-duration-label">00:00</span>
     </div>
     

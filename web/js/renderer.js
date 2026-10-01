@@ -570,6 +570,45 @@ export class Renderer {
   }
 
   /**
+   * Immediately updates model blendshapes/rotation and renders a frame.
+   * Used for deterministic, non-interpolated offline rendering at 60 FPS.
+   * @param {Record<string, number>} blendShapes
+   * @param {{ pitch?: number, yaw?: number, roll?: number }|null} [rotation]
+   */
+  renderDirectFrame(blendShapes, rotation = null) {
+    if (this._model && blendShapes) {
+      applyBlendShapes(this._modelMap, blendShapes);
+    }
+    if (rotation) {
+      const rx = rotation.pitch || 0;
+      const ry = rotation.yaw || 0;
+      const rz = rotation.roll || 0;
+      if (this._headBone) {
+        this._headBone.rotation.set(rx, ry, rz);
+      } else if (this._model) {
+        this._model.rotation.set(rx, ry, rz);
+      }
+    }
+    this._controls.update();
+    this._renderer.render(this._scene, this._camera);
+  }
+
+  /**
+   * Set canvas to Full HD 1080p (1920x1080) for high-definition video export.
+   */
+  setExport1080p(enable = true) {
+    if (enable) {
+      this._renderer.setPixelRatio(1);
+      this._renderer.setSize(1920, 1080, false);
+      this._camera.aspect = 1920 / 1080;
+      this._camera.updateProjectionMatrix();
+    } else {
+      this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this._onResize();
+    }
+  }
+
+  /**
    * Reset camera position.
    */
   resetCamera() {
