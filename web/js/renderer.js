@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader }    from 'three/addons/loaders/KTX2Loader.js';
+import { DRACOLoader }   from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
 
@@ -79,8 +80,16 @@ export class Renderer {
     this._controls.target.set(0, 0, 0);
     this._controls.update();
 
-    /* ── KTX2 & GLTF Loaders ── */
+    /* ── KTX2, Draco & GLTF Loaders ── */
     this._loader = new GLTFLoader();
+
+    try {
+      this._dracoLoader = new DRACOLoader();
+      this._dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+      this._loader.setDRACOLoader(this._dracoLoader);
+    } catch (e) {
+      console.warn('[Renderer] DRACOLoader indisponível:', e);
+    }
 
     try {
       this._ktx2Loader = new KTX2Loader();
@@ -145,13 +154,37 @@ export class Renderer {
     const gltf = await this._loader.loadAsync(url);
     const model = gltf.scene;
 
-    // Centre and scale
-    const box    = new THREE.Box3().setFromObject(model);
-    const size   = box.getSize(new THREE.Vector3());
-    const centre = box.getCenter(new THREE.Vector3());
+    // Centre and scale: if full-body model, frame specifically on the head/face
+    const fullBox = new THREE.Box3().setFromObject(model);
+    const fullSize = fullBox.getSize(new THREE.Vector3());
 
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale  = 1.0 / (maxDim || 1);
+    let faceBox = new THREE.Box3();
+    let hasFaceMesh = false;
+
+    model.traverse((node) => {
+      if (node.isMesh) {
+        const hasMorphs = node.morphTargetDictionary && Object.keys(node.morphTargetDictionary).length > 5;
+        const isFaceNamed = /(head|face|eye|teeth|mouth|hair)/i.test(node.name);
+        if (hasMorphs || isFaceNamed) {
+          if (!hasFaceMesh) {
+            faceBox.setFromObject(node);
+            hasFaceMesh = true;
+          } else {
+            faceBox.expandByObject(node);
+          }
+        }
+      }
+    });
+
+    // If model is full body (aspect ratio tall) and face was found, center and scale on face
+    const isFullBody = hasFaceMesh && (fullSize.y > fullSize.x * 1.5) && (faceBox.getSize(new THREE.Vector3()).y < fullSize.y * 0.6);
+    const activeBox = isFullBody ? faceBox : fullBox;
+
+    const size   = activeBox.getSize(new THREE.Vector3());
+    const centre = activeBox.getCenter(new THREE.Vector3());
+
+    const targetDim = isFullBody ? Math.max(size.x, size.y) * 1.5 : Math.max(fullSize.x, fullSize.y, fullSize.z);
+    const scale  = 1.0 / (targetDim || 1);
     model.scale.setScalar(scale);
     model.position.sub(centre.multiplyScalar(scale));
 
@@ -283,6 +316,34 @@ export class Renderer {
         this._ambientLight.intensity = 0.35;
         break;
 
+      case 'toon':
+        this._keyLight.color.setHex(0xffffff);
+        this._keyLight.intensity = 2.4;
+        this._keyLight.position.set(2.0, 2.0, 2.0);
+        this._fillLight.color.setHex(0x99bbff);
+        this._fillLight.intensity = 0.5;
+        this._fillLight.position.set(-2.0, 0.5, 1.5);
+        this._rimLight.color.setHex(0xffffff);
+        this._rimLight.intensity = 0.8;
+        this._rimLight.position.set(0, 1.0, -2.0);
+        this._ambientLight.color.setHex(0xffffff);
+        this._ambientLight.intensity = 0.8;
+        break;
+
+      case 'smooth':
+        this._keyLight.color.setHex(0xfffaee);
+        this._keyLight.intensity = 1.4;
+        this._keyLight.position.set(1.5, 1.8, 2.0);
+        this._fillLight.color.setHex(0xffe4db);
+        this._fillLight.intensity = 1.0;
+        this._fillLight.position.set(-2.0, 0.5, 1.5);
+        this._rimLight.color.setHex(0xffffff);
+        this._rimLight.intensity = 0.6;
+        this._rimLight.position.set(0, 1.0, -2.0);
+        this._ambientLight.color.setHex(0xfff5f0);
+        this._ambientLight.intensity = 1.2;
+        break;
+
       case 'clay':
       case 'normals':
       case 'wireframe':
@@ -329,6 +390,33 @@ export class Renderer {
             });
           }
           node.material = node.userData.normalMaterial;
+          node.material.wireframe = false;
+        } else if (mode === 'toon') {
+          if (!node.userData.toonMaterial) {
+            const baseMat = Array.isArray(orig) ? orig[0] : orig;
+            node.userData.toonMaterial = new THREE.MeshToonMaterial({
+              color: (baseMat && baseMat.color) ? baseMat.color.clone() : new THREE.Color(0xffffff),
+              map: (baseMat && baseMat.map) ? baseMat.map : null,
+              wireframe: false,
+            });
+          }
+          node.material = node.userData.toonMaterial;
+          node.material.wireframe = false;
+        } else if (mode === 'smooth') {
+          if (node.geometry && typeof node.geometry.computeVertexNormals === 'function') {
+            node.geometry.computeVertexNormals();
+          }
+          if (!node.userData.smoothMaterial) {
+            const baseMat = Array.isArray(orig) ? orig[0] : orig;
+            node.userData.smoothMaterial = new THREE.MeshStandardMaterial({
+              color: (baseMat && baseMat.color) ? baseMat.color.clone() : new THREE.Color(0xffffff),
+              map: (baseMat && baseMat.map) ? baseMat.map : null,
+              roughness: 0.92,
+              metalness: 0.0,
+              wireframe: false,
+            });
+          }
+          node.material = node.userData.smoothMaterial;
           node.material.wireframe = false;
         } else if (mode === 'wireframe') {
           node.material = orig;

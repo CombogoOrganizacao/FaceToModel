@@ -49,21 +49,21 @@
       </div>
     </div>
 
-    <!-- Status HUD flutuante -->
-    <div class="canvas-hud" id="hud-status">
-      <div class="hud-dot" id="hud-dot"></div>
-      <span id="hud-text">Aguardando Sensor</span>
-    </div>
-
-    <!-- Botão Flutuante de Controle do Drawer -->
+    <!-- Botão Flutuante de Controle do Drawer (Canto Superior Esquerdo) -->
     <button class="drawer-trigger-btn" id="btn-toggle-drawer" aria-label="Abrir Ajustes">
       <svg class="svg-icon" viewBox="0 0 24 24">
         <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
-        <line x1="15" y1="3" x2="15" y2="21" stroke="currentColor" stroke-width="2"/>
+        <line x1="9" y1="3" x2="9" y2="21" stroke="currentColor" stroke-width="2"/>
       </svg>
     </button>
 
-    <!-- Picture-in-Picture da Câmera do Smartphone -->
+    <!-- Status HUD flutuante (Canto Superior Direito) -->
+    <div class="canvas-hud" id="hud-status">
+      <div class="hud-dot" id="hud-dot"></div>
+      <span id="hud-text">Aguardando Sensor da Câmera (0 FPS)</span>
+    </div>
+
+    <!-- Picture-in-Picture da Câmera do Smartphone (Canto Inferior Direito) -->
     <div class="pip-window hidden" id="pip-container">
       <div class="pip-header">
         <div class="pip-title">
@@ -84,7 +84,7 @@
     </div>
   </div>
 
-  <!-- ── Drawer Lateral Direito (Apple HIG) ── -->
+  <!-- ── Drawer Lateral Esquerdo (Apple HIG) ── -->
   <aside class="sidebar-drawer open" id="sidebar-drawer">
     
     <header class="sidebar-header">
@@ -98,10 +98,9 @@
         <span class="brand-title">FaceToModel</span>
       </div>
       <div class="header-actions">
-        <span class="brand-badge" id="fps-counter">60 FPS</span>
         <button class="drawer-close-btn" id="btn-close-drawer" aria-label="Recolher painel">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
-            <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           </svg>
         </button>
       </div>
@@ -109,104 +108,54 @@
 
     <div class="sidebar-content">
 
-      <!-- ── Seção 1: Câmera & Dispositivos ── -->
-      <div class="section-group">
-        <span class="section-label">Sensor & Dispositivos</span>
-        <div class="card-group">
-          
-          <!-- Pareamento Smartphone via QR Code -->
-          <div class="card-row interactive" id="btn-open-qr">
-            <div class="row-leading">
-              <div class="row-icon-box blue">
-                <!-- SVG QR Code -->
-                <svg class="svg-icon" viewBox="0 0 24 24">
-                  <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h3v2h-3v-2zm-5 0h2v3h-2v-3zm2 3h3v3h-3v-3zm3 0h2v3h-2v-3zm-5 2h2v2h-2v-2z" fill="currentColor"/>
-                </svg>
-              </div>
-              <div class="row-text">
-                <span class="row-title">Conectar Smartphone</span>
-                <span class="row-sub" id="p2p-status-sub">Escanear QR Code com a câmera</span>
-              </div>
-            </div>
-            <svg class="svg-icon" style="color:var(--label-tertiary);" viewBox="0 0 24 24">
-              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <!-- ── Accordion 1: Modelo 3D ── -->
+      <div class="accordion-item open" id="acc-model">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="2" fill="none"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="2" fill="none"/>
             </svg>
+            <span>Modelo 3D</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
+          <span class="accordion-sublabel">Modelos Pré-configurados (ARKit 52)</span>
+          <div class="model-presets-grid" id="model-presets">
+            <button class="model-preset-pill active" data-model="facecap" data-url="/models/facecap.glb">
+              <span class="model-pill-icon">🎭</span>
+              <span class="model-pill-text">Padrão</span>
+            </button>
+            <button class="model-preset-pill" data-model="anime" data-url="/models/anime.glb">
+              <span class="model-pill-icon">🌸</span>
+              <span class="model-pill-text">Anime</span>
+            </button>
+            <button class="model-preset-pill" data-model="metahuman" data-url="/models/metahuman.glb">
+              <span class="model-pill-icon">👤</span>
+              <span class="model-pill-text">Realista</span>
+            </button>
+            <button class="model-preset-pill" data-model="stylized" data-url="/models/stylized.glb">
+              <span class="model-pill-icon">⚡️</span>
+              <span class="model-pill-text">Estilizado</span>
+            </button>
+            <button class="model-preset-pill" data-model="furry" data-url="/models/raccoon.glb">
+              <span class="model-pill-icon">🦊</span>
+              <span class="model-pill-text">Furry</span>
+            </button>
           </div>
 
-          <!-- Preview de Vídeo do Smartphone no Mac -->
-          <div class="card-row">
-            <div class="row-leading">
-              <div class="row-icon-box purple">
-                <svg class="svg-icon" viewBox="0 0 24 24">
-                  <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
-                  <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2"/>
-                  <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2"/>
-                </svg>
-              </div>
-              <div class="row-text">
-                <span class="row-title">Preview do Smartphone</span>
-                <span class="row-sub">Vídeo flutuante PiP</span>
-              </div>
-            </div>
-            <label class="ios-switch">
-              <input type="checkbox" id="chk-pip-preview">
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-            </label>
-          </div>
-
-          <!-- Câmera Local -->
-          <div class="card-row interactive" id="btn-toggle-local-cam">
-            <div class="row-leading">
-              <div class="row-icon-box orange">
-                <!-- SVG Camera -->
-                <svg class="svg-icon" viewBox="0 0 24 24">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" fill="none"/>
-                  <circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
-                </svg>
-              </div>
-              <div class="row-text">
-                <span class="row-title" id="local-cam-title">Câmera</span>
-                <span class="row-sub" id="local-cam-sub">Rastreamento neste computador</span>
-              </div>
-            </div>
-            <span id="local-cam-badge" style="font-size: 12px; color: var(--label-secondary);">Ativar</span>
-          </div>
-
-          <!-- Seleção de Dispositivos (Câmera e Microfone) -->
-          <div class="card-device-selects">
-            <div class="select-field">
-              <label for="select-camera" class="select-label">Dispositivo de Câmera</label>
-              <select id="select-camera" class="apple-select">
-                <option value="">Carregando câmeras...</option>
-              </select>
-            </div>
-
-            <div class="select-field">
-              <label for="select-mic" class="select-label">Microfone de Gravação</label>
-              <select id="select-mic" class="apple-select">
-                <option value="">Microfone Padrão</option>
-              </select>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- ── Seção 2: Modelo 3D ── -->
-      <div class="section-group">
-        <span class="section-label">Modelo 3D</span>
-        <div class="card-group">
-          
           <input type="file" id="file-input-model" accept=".glb,.gltf" style="display: none;" />
 
-          <div class="card-row interactive" id="btn-choose-model">
+          <div class="card-row interactive" id="btn-choose-model" style="margin-top: 10px;">
             <div class="row-leading">
               <div class="row-icon-box green">
-                <!-- SVG 3D Cube -->
                 <svg class="svg-icon" viewBox="0 0 24 24">
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="2" fill="none"/>
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="2" fill="none"/>
-                  <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <polyline points="17 8 12 3 7 8" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="2"/>
                 </svg>
               </div>
               <div class="row-text">
@@ -214,18 +163,33 @@
                 <span class="row-sub" id="model-coverage">52 blendshapes mapeados</span>
               </div>
             </div>
-            <svg class="svg-icon" style="color:var(--label-tertiary);" viewBox="0 0 24 24">
-              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            </svg>
+            <span style="font-size: 11px; font-weight: 500; color: var(--accent-blue);">Importar</span>
           </div>
-
         </div>
       </div>
 
-      <!-- ── Seção 3: Iluminação & Shading (Estilo Blender) ── -->
-      <div class="section-group">
-        <span class="section-label">Iluminação & Shading</span>
-        <div class="card-group" style="padding: 10px 12px;">
+      <!-- ── Accordion 2: Iluminação & Shading (Estilo Blender) ── -->
+      <div class="accordion-item open" id="acc-shading">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2" fill="none"/>
+              <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+              <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2"/>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2"/>
+              <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2"/>
+              <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2"/>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            <span>Iluminação & Shading</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
           <div class="shading-grid" id="shading-selector">
             <button class="shading-pill active" data-mode="studio">
               <span class="shading-dot" style="background: #ffd080;"></span>
@@ -238,6 +202,14 @@
             <button class="shading-pill" data-mode="cyber">
               <span class="shading-dot" style="background: #00e5ff;"></span>
               Cyber
+            </button>
+            <button class="shading-pill" data-mode="toon">
+              <span class="shading-dot" style="background: #ffb800; border: 1px solid #ffffff;"></span>
+              Cel-Shading
+            </button>
+            <button class="shading-pill" data-mode="smooth">
+              <span class="shading-dot" style="background: #ffc4be;"></span>
+              Suave
             </button>
             <button class="shading-pill" data-mode="clay">
               <span class="shading-dot" style="background: #c8b49e;"></span>
@@ -265,10 +237,22 @@
         </div>
       </div>
 
-      <!-- ── Seção 4: Cenário & Fundo (Upload + Blur) ── -->
-      <div class="section-group">
-        <span class="section-label">Cenário & Fundo</span>
-        <div class="card-group" style="padding: 12px 14px; gap: 10px;">
+      <!-- ── Accordion 3: Cenário & Fundo (Upload + Blur) ── -->
+      <div class="accordion-item" id="acc-background">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+              <polyline points="21 15 16 10 5 21" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+            <span>Cenário & Fundo</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
           <input type="file" id="file-input-bg" accept="image/*" style="display: none;" />
 
           <div style="display: flex; gap: 8px;">
@@ -285,7 +269,7 @@
             </button>
           </div>
 
-          <div class="slider-control-group">
+          <div class="slider-control-group" style="margin-top: 12px;">
             <div class="slider-header">
               <span class="slider-title">Desfoque do Fundo (Blur)</span>
               <span class="slider-value" id="label-bg-blur">0px</span>
@@ -295,20 +279,135 @@
         </div>
       </div>
 
-      <!-- ── Seção 5: Telemetria Facial em Tempo Real ── -->
-      <div class="section-group">
-        <span class="section-label">Telemetria de Expressões</span>
-        <div class="card-group" id="inspector-container" style="padding: 12px 14px; gap: 8px; display: flex; flex-direction: column;">
-          <div id="inspector-empty" style="font-size: 12px; color: var(--label-tertiary); text-align: center; padding: 4px 0;">
-            Aguardando expressões faciais...
+      <!-- ── Accordion 4: Câmera & Dispositivos ── -->
+      <div class="accordion-item" id="acc-devices">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+            <span>Câmera & Dispositivos</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
+          <!-- Pareamento Smartphone via QR Code -->
+          <div class="card-row interactive" id="btn-open-qr">
+            <div class="row-leading">
+              <div class="row-icon-box blue">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h3v2h-3v-2zm-5 0h2v3h-2v-3zm2 3h3v3h-3v-3zm3 0h2v3h-2v-3zm-5 2h2v2h-2v-2z" fill="currentColor"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Conectar Smartphone</span>
+                <span class="row-sub" id="p2p-status-sub">Escanear QR Code com a câmera</span>
+              </div>
+            </div>
+            <svg class="svg-icon" style="color:var(--label-tertiary);" viewBox="0 0 24 24">
+              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Preview de Vídeo do Smartphone no Mac -->
+          <div class="card-row" style="margin-top: 8px;">
+            <div class="row-leading">
+              <div class="row-icon-box purple">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2"/>
+                  <line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Preview do Smartphone</span>
+                <span class="row-sub">Janela flutuante PiP</span>
+              </div>
+            </div>
+            <label class="ios-switch">
+              <input type="checkbox" id="chk-pip-preview">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+
+          <!-- Câmera Local -->
+          <div class="card-row interactive" id="btn-toggle-local-cam" style="margin-top: 8px;">
+            <div class="row-leading">
+              <div class="row-icon-box orange">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2" fill="none"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title" id="local-cam-title">Câmera deste Mac</span>
+                <span class="row-sub" id="local-cam-sub">Rastreamento neste computador</span>
+              </div>
+            </div>
+            <span id="local-cam-badge" style="font-size: 12px; color: var(--label-secondary);">Ativar</span>
+          </div>
+
+          <!-- Seleção de Dispositivos (Câmera e Microfone) -->
+          <div class="card-device-selects" style="margin-top: 10px;">
+            <div class="select-field">
+              <label for="select-camera" class="select-label">Dispositivo de Câmera</label>
+              <select id="select-camera" class="apple-select">
+                <option value="">Carregando câmeras...</option>
+              </select>
+            </div>
+
+            <div class="select-field">
+              <label for="select-mic" class="select-label">Microfone de Gravação</label>
+              <select id="select-mic" class="apple-select">
+                <option value="">Microfone Padrão</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- ── Seção 6: Gravação em MP4 ── -->
-      <div class="section-group">
-        <span class="section-label">Gravação de Vídeo</span>
-        <div class="card-group">
+      <!-- ── Accordion 5: Telemetria Facial em Tempo Real ── -->
+      <div class="accordion-item" id="acc-telemetry">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <line x1="18" y1="20" x2="18" y2="10" stroke="currentColor" stroke-width="2"/>
+              <line x1="12" y1="20" x2="12" y2="4" stroke="currentColor" stroke-width="2"/>
+              <line x1="6" y1="20" x2="6" y2="14" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            <span>Telemetria de Expressões</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
+          <div id="inspector-container" style="display: flex; flex-direction: column; gap: 8px;">
+            <div id="inspector-empty" style="font-size: 12px; color: var(--label-tertiary); text-align: center; padding: 4px 0;">
+              Aguardando expressões faciais...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Accordion 6: Gravação em MP4 ── -->
+      <div class="accordion-item open" id="acc-recording">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="12" cy="12" r="4" fill="currentColor"/>
+            </svg>
+            <span>Gravação de Vídeo (MP4)</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
           <div class="record-container">
             <button class="record-shutter" id="btn-shutter" aria-label="Gravar">
               <div class="shutter-inner"></div>
@@ -322,8 +421,12 @@
                 <polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="2" fill="none"/>
                 <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
               </svg>
-              Baixar Gravação MP4
+              Baixar Gravação (.mp4)
             </button>
+          </div>
+
+          <div class="preview-container hidden" id="preview-wrapper" style="margin-top: 10px;">
+            <video id="preview-player" controls playsinline></video>
           </div>
         </div>
       </div>

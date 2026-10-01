@@ -205,7 +205,7 @@ function normaliseName(name) {
  * }} modelMap, coverage count, and total ARKit shapes
  */
 export function buildModelMap(model) {
-  /** @type {Record<string, { mesh: import('three').SkinnedMesh, index: number }>} */
+  /** @type {Record<string, Array<{ mesh: import('three').SkinnedMesh, index: number }>>} */
   const map = {};
 
   // Collect all meshes that have morph targets
@@ -236,45 +236,41 @@ export function buildModelMap(model) {
 
   for (const arkitName of ARKIT_BLENDSHAPES) {
     const facecapName = FACECAP_MAP[arkitName]; // translated name (may be same)
+    const targets = [];
 
-    let found = false;
-
-    // --- Pass 1: exact match on ARKit name or FACECAP_MAP name ---
+    // --- Pass 1: exact match on ARKit name or FACECAP_MAP name across ALL meshes ---
     for (const { mesh, dict } of morphMeshes) {
       if (arkitName in dict) {
-        map[arkitName] = { mesh, index: dict[arkitName] };
-        found = true;
-        break;
-      }
-      if (facecapName && facecapName in dict) {
-        map[arkitName] = { mesh, index: dict[facecapName] };
-        found = true;
-        break;
+        targets.push({ mesh, index: dict[arkitName] });
+      } else if (facecapName && facecapName in dict) {
+        targets.push({ mesh, index: dict[facecapName] });
       }
     }
 
-    // --- Pass 2: fuzzy normalised base comparison ---
-    if (!found) {
-      const normArkit    = normaliseName(arkitName);
-      const normFacecap  = facecapName ? normaliseName(facecapName) : null;
+    // --- Pass 2: fuzzy normalised base comparison if not found in Pass 1 ---
+    if (targets.length === 0) {
+      const normArkit   = normaliseName(arkitName);
+      const normFacecap = facecapName ? normaliseName(facecapName) : null;
 
       for (const entry of allMorphEntries) {
         if (entry.norm === normArkit || (normFacecap && entry.norm === normFacecap)) {
-          map[arkitName] = { mesh: entry.mesh, index: entry.index };
-          found = true;
-          break;
+          // Avoid duplicate mesh additions
+          if (!targets.some(t => t.mesh === entry.mesh)) {
+            targets.push({ mesh: entry.mesh, index: entry.index });
+          }
         }
       }
     }
 
-    if (found) {
+    if (targets.length > 0) {
+      map[arkitName] = targets;
       matched++;
     } else {
       console.debug(`[BlendshapeMapper] No match for ARKit "${arkitName}" (facecap: "${facecapName}")`);
     }
   }
 
-  console.log(`[BlendshapeMapper] Coverage: ${matched}/${ARKIT_BLENDSHAPES.length} blendshapes mapped.`);
+  console.log(`[BlendshapeMapper] Coverage: ${matched}/${ARKIT_BLENDSHAPES.length} blendshapes mapped across ${morphMeshes.length} meshes.`);
   return { map, coverage: matched, total: ARKIT_BLENDSHAPES.length };
 }
 
@@ -284,20 +280,31 @@ export function buildModelMap(model) {
  * Apply a set of blendshape values to the model using a pre-built model map.
  * Values outside [0, 1] are clamped. Unknown keys are silently ignored.
  *
- * @param {Record<string, { mesh: import('three').SkinnedMesh, index: number }>} modelMap
+ * @param {Record<string, Array<{ mesh: import('three').SkinnedMesh, index: number }>>} modelMap
  *   The map returned by {@link buildModelMap}.
  * @param {Record<string, number>} blendShapes
  *   Object where each key is an ARKit blendshape name and value is in [0, 1].
  */
 export function applyBlendShapes(modelMap, blendShapes) {
   for (const [name, value] of Object.entries(blendShapes)) {
-    const entry = modelMap[name];
-    if (!entry) continue;
+    const targets = modelMap[name];
+    if (!targets) continue;
 
-    const { mesh, index } = entry;
-    if (!mesh.morphTargetInfluences) continue;
+    const clamped = Math.max(0, Math.min(1, value));
 
-    // Clamp to [0, 1] and write
-    mesh.morphTargetInfluences[index] = Math.max(0, Math.min(1, value));
+    if (Array.isArray(targets)) {
+      for (let i = 0; i < targets.length; i++) {
+        const { mesh, index } = targets[i];
+        if (mesh && mesh.morphTargetInfluences) {
+          mesh.morphTargetInfluences[index] = clamped;
+        }
+      }
+    } else {
+      // Backwards compatibility with single target format
+      const { mesh, index } = targets;
+      if (mesh && mesh.morphTargetInfluences) {
+        mesh.morphTargetInfluences[index] = clamped;
+      }
+    }
   }
 }

@@ -67,6 +67,8 @@ function bootstrap() {
     setupUI();
     setupDragAndDrop();
     setupDrawer();
+    setupAccordions();
+    setupModelPresets();
     setupShading();
     setupBackground();
     setupPiP();
@@ -95,11 +97,10 @@ async function init3DEngine() {
     renderer.startLoop();
     startInspectorLoop();
 
-    // 4. FPS Counter
+    // 4. Sensor HUD & FPS Counter
     setInterval(() => {
-      if (renderer) {
-        $('fps-counter').textContent = `${renderer.fps} FPS`;
-      }
+      const fps = renderer ? renderer.fps : 0;
+      updateSensorHud(fps);
     }, 500);
 
     // 5. Load Default 3D Model in Background
@@ -159,8 +160,7 @@ function initP2PRoom() {
   p2pClient = new P2PClient(roomId, true);
   
   p2pClient.onPeerJoinCallback = () => {
-    $('hud-dot').className = 'hud-dot active';
-    $('hud-text').textContent = 'Smartphone Conectado ✓';
+    updateSensorHud(renderer ? renderer.fps : 0);
     $('p2p-status-sub').textContent = 'Smartphone conectado em tempo real';
     $('p2p-status-sub').style.color = 'var(--sys-green)';
     closeQRModal();
@@ -168,8 +168,7 @@ function initP2PRoom() {
   };
 
   p2pClient.onPeerLeaveCallback = () => {
-    $('hud-dot').className = 'hud-dot';
-    $('hud-text').textContent = 'Aguardando Sensor';
+    updateSensorHud(renderer ? renderer.fps : 0);
     $('p2p-status-sub').textContent = 'Escanear QR Code com a câmera';
     $('p2p-status-sub').style.color = 'var(--label-secondary)';
     
@@ -237,6 +236,60 @@ function setupDrawer() {
   });
 }
 
+/* ─── Sensor Telemetry HUD ────────────────────────────────────────────────── */
+
+function updateSensorHud(fps = 0) {
+  const hudText = $('hud-text');
+  const hudDot = $('hud-dot');
+  if (!hudText) return;
+
+  if (p2pClient && p2pClient.isConnected) {
+    hudDot.className = 'hud-dot active';
+    hudText.textContent = `Sensor Conectado (${fps} FPS)`;
+  } else if (localTracking) {
+    hudDot.className = 'hud-dot active';
+    hudText.textContent = `Câmera Local (${fps} FPS)`;
+  } else {
+    hudDot.className = 'hud-dot';
+    hudText.textContent = `Aguardando Sensor da Câmera (${fps} FPS)`;
+  }
+}
+
+/* ─── Accordions Retráteis ────────────────────────────────────────────────── */
+
+function setupAccordions() {
+  const items = document.querySelectorAll('.accordion-item');
+  items.forEach((item) => {
+    const header = item.querySelector('.accordion-header');
+    if (!header) return;
+
+    header.addEventListener('click', () => {
+      item.classList.toggle('open');
+    });
+  });
+}
+
+/* ─── Model Presets (Padrão, Anime, Realista, Estilizado, Furry) ──────────── */
+
+function setupModelPresets() {
+  const pills = document.querySelectorAll('.model-preset-pill');
+  pills.forEach((pill) => {
+    pill.addEventListener('click', async () => {
+      pills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+
+      const url = pill.getAttribute('data-url');
+      const modelKey = pill.getAttribute('data-model') || '';
+      const filename = url ? url.split('/').pop() : 'model.glb';
+
+      if (url && renderer) {
+        showToast(`Carregando modelo ${pill.querySelector('.model-pill-text')?.textContent || modelKey}...`, 'info');
+        await loadModel(url, filename);
+      }
+    });
+  });
+}
+
 /* ─── Shading & Lighting Modes (Blender Viewport Shading) ─────────────────── */
 
 function setupShading() {
@@ -256,6 +309,8 @@ function setupShading() {
           studio: 'Estúdio PBR',
           sunset: 'Sunset Golden Hour',
           cyber: 'Cyber Neon',
+          toon: 'Cel-Shading (Toon)',
+          smooth: 'Suave / Beauty Soft',
           clay: 'Argila / Escultura',
           normals: 'Visualizador de Normais',
           wireframe: 'Wireframe Poligonal',
@@ -485,10 +540,9 @@ async function toggleLocalCamera() {
     stopLocalCamera();
     badge.textContent = 'Ativar';
     badge.style.color = 'var(--label-secondary)';
-    title.textContent = 'Câmera';
+    title.textContent = 'Câmera deste Mac';
     if (sub) sub.textContent = 'Rastreamento neste computador';
-    $('hud-dot').className = 'hud-dot';
-    $('hud-text').textContent = 'Aguardando Sensor';
+    updateSensorHud(renderer ? renderer.fps : 0);
     showToast('Câmera desativada', 'info');
   } else {
     badge.textContent = 'Iniciando...';
@@ -498,8 +552,7 @@ async function toggleLocalCamera() {
       badge.style.color = 'var(--sys-green)';
       title.textContent = 'Câmera (Ativa)';
       if (sub) sub.textContent = 'Rastreamento facial ativo';
-      $('hud-dot').className = 'hud-dot active';
-      $('hud-text').textContent = 'Câmera Ativa';
+      updateSensorHud(renderer ? renderer.fps : 0);
       showToast('Câmera ativada com sucesso', 'success');
     } catch (err) {
       console.error('Erro na câmera:', err);
@@ -728,6 +781,16 @@ function startInspectorLoop() {
 async function loadModel(url, filename) {
   $('model-name').textContent = 'Carregando...';
   $('model-coverage').textContent = 'Analisando morph targets';
+
+  const presetPills = document.querySelectorAll('.model-preset-pill');
+  presetPills.forEach((p) => {
+    const pUrl = p.getAttribute('data-url') || '';
+    if (url.includes(pUrl) || (filename && pUrl.includes(filename))) {
+      p.classList.add('active');
+    } else {
+      p.classList.remove('active');
+    }
+  });
 
   try {
     await renderer.loadModel(url);
