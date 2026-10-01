@@ -326,6 +326,7 @@ function setupShading() {
       if (renderer) {
         renderer.setShadingMode(mode);
         const modeLabels = {
+          unreal: 'Unreal Engine 5 (Lumen Cinematic PBR)',
           studio: 'Estúdio PBR',
           sunset: 'Sunset Golden Hour',
           cyber: 'Cyber Neon',

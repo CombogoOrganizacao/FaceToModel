@@ -21,6 +21,7 @@ import { DRACOLoader }   from 'three/addons/loaders/DRACOLoader.js';
 import { FBXLoader }     from 'three/addons/loaders/FBXLoader.js';
 import { OBJLoader }     from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
 
@@ -45,7 +46,7 @@ export class Renderer {
     /** @type {HTMLCanvasElement} */
     this.canvas = canvas;
 
-    /* ── WebGLRenderer ── */
+    /* ── WebGLRenderer (Unreal Engine ACES Tone Mapping & PBR Precision) ── */
     this._renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -57,10 +58,17 @@ export class Renderer {
     this._renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
     this._renderer.outputColorSpace  = THREE.SRGBColorSpace;
     this._renderer.toneMapping       = THREE.ACESFilmicToneMapping;
-    this._renderer.toneMappingExposure = 1.1;
+    this._renderer.toneMappingExposure = 1.15;
 
-    /* ── Scene ── */
+    /* ── Scene & Unreal Engine Studio IBL Environment ── */
     this._scene = new THREE.Scene();
+    const pmremGenerator = new THREE.PMREMGenerator(this._renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const roomEnv = new RoomEnvironment();
+    this._envMap = pmremGenerator.fromScene(roomEnv).texture;
+    this._scene.environment = this._envMap;
+    pmremGenerator.dispose();
+    roomEnv.dispose();
 
     /* ── Camera ── */
     const width = canvas.clientWidth || window.innerWidth || 800;
@@ -123,7 +131,7 @@ export class Renderer {
     this._fpsFrames = 0;
     this._fpsLast = performance.now();
     this._running = false;
-    this._currentShadingMode = 'studio';
+    this._currentShadingMode = 'unreal';
     this._showTextures = true;
     this._lightAzimuth = 45;
     this._lightElevation = 35;
@@ -457,6 +465,22 @@ export class Renderer {
         this._ambientLight.intensity = 1.2;
         break;
 
+      case 'unreal':
+        // Unreal Engine 5 Lumen / Cinematic Lighting setup
+        this._keyLight.color.setHex(0xfff8f0);
+        this._keyLight.intensity = 2.8;
+        this._keyLight.position.set(1.8, 2.2, 2.2);
+        this._fillLight.color.setHex(0xcbe3ff);
+        this._fillLight.intensity = 1.2;
+        this._fillLight.position.set(-2.2, 0.8, 1.8);
+        this._rimLight.color.setHex(0x90b0ff);
+        this._rimLight.intensity = 1.4;
+        this._rimLight.position.set(0, 1.2, -2.4);
+        this._ambientLight.color.setHex(0xffffff);
+        this._ambientLight.intensity = 0.4;
+        if (this._scene) this._scene.environment = this._envMap;
+        break;
+
       case 'clay':
       case 'normals':
       case 'wireframe':
@@ -474,6 +498,7 @@ export class Renderer {
         this._rimLight.position.set(0, 1.0, -2.0);
         this._ambientLight.color.setHex(0xffffff);
         this._ambientLight.intensity = 0.7;
+        if (this._scene) this._scene.environment = this._envMap;
         break;
     }
 
