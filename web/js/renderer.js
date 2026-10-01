@@ -218,14 +218,14 @@ export class Renderer {
       model = gltf.scene;
     }
 
-    // Ensure all materials are double-sided, properly sorted for alpha blending, and skin/eyes rendered with Unreal Engine realistic PBR
+    // Ensure all materials are double-sided, properly sorted for alpha blending, and skin/eyes/hair rendered with Unreal Engine realistic PBR
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
         node.receiveShadow = true;
         if (node.material) {
           const mats = Array.isArray(node.material) ? node.material : [node.material];
-          mats.forEach((m) => {
+          const newMats = mats.map((m) => {
             m.side = THREE.DoubleSide;
 
             const matName = (m.name || '').toLowerCase();
@@ -236,37 +236,98 @@ export class Renderer {
               m.metalness = 0.0;
               if (m.specularIntensity !== undefined) m.specularIntensity = 0.35;
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
+              return m;
             }
-            // 2. Cabelo / Barba / Cartas de Pelo / Eyebrows / Eyelashes (AlphaTest para nitidez sem descolamento)
-            else if (matName.includes('hair') || matName.includes('cards_m') || matName.includes('eyebrow') || matName.includes('eyelashes') || matName.includes('lashmat') || matName.includes('cardmat')) {
-              m.transparent = true;
-              m.alphaTest = 0.35;
-              m.depthWrite = true;
-              m.depthTest = true;
-              m.roughness = 0.65;
-              m.metalness = 0.0;
-              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.3;
-              m.needsUpdate = true;
+            // 2. Fios de Cabelo / Cartas de Pelo do MetaHuman (MeshPhysicalMaterial com Anisotropia e Sheen de Melanina)
+            else if (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow'))) {
+              const hairMat = new THREE.MeshPhysicalMaterial({
+                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+                map: m.map || null,
+                alphaMap: m.alphaMap || null,
+                normalMap: m.normalMap || null,
+                roughness: 0.42,
+                metalness: 0.0,
+                anisotropy: 0.85,
+                anisotropyRotation: Math.PI / 2,
+                sheen: 0.7,
+                sheenColor: new THREE.Color(0x5a321a),
+                sheenRoughness: 0.5,
+                transparent: true,
+                alphaTest: 0.28,
+                depthWrite: true,
+                depthTest: true,
+                alphaToCoverage: true,
+                side: THREE.DoubleSide,
+                name: m.name,
+              });
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.85;
+              return hairMat;
             }
-            // 3. Roupas e Tecidos
+            // 3. Sobrancelhas (Eyebrows — polygonOffset para eliminar Z-fighting com a pele da testa)
+            else if (matName.includes('eyebrow')) {
+              const browMat = new THREE.MeshPhysicalMaterial({
+                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+                map: m.map || null,
+                alphaMap: m.alphaMap || null,
+                roughness: 0.48,
+                metalness: 0.0,
+                transparent: true,
+                alphaTest: 0.32,
+                depthWrite: true,
+                depthTest: true,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -4,
+                alphaToCoverage: true,
+                side: THREE.DoubleSide,
+                name: m.name,
+              });
+              return browMat;
+            }
+            // 4. Cílios (Eyelashes / LashMat — umidade e especularidade natural com polygonOffset)
+            else if (matName.includes('eyelashes') || matName.includes('lashmat')) {
+              const lashMat = new THREE.MeshPhysicalMaterial({
+                color: m.color ? m.color.clone() : new THREE.Color(0x1a120b),
+                map: m.map || null,
+                alphaMap: m.alphaMap || null,
+                roughness: 0.22,
+                metalness: 0.0,
+                specularIntensity: 0.65,
+                transparent: true,
+                alphaTest: 0.25,
+                depthWrite: true,
+                depthTest: true,
+                polygonOffset: true,
+                polygonOffsetFactor: -1,
+                polygonOffsetUnits: -2,
+                alphaToCoverage: true,
+                side: THREE.DoubleSide,
+                name: m.name,
+              });
+              return lashMat;
+            }
+            // 5. Roupas e Tecidos
             else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit')) {
               m.roughness = 0.85; // Tecido fosco
               m.metalness = 0.0;
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.2;
+              return m;
             }
-            // 4. Dentes e Boca
+            // 6. Dentes e Boca
             else if (matName.includes('teeth')) {
               m.roughness = 0.28;
               m.metalness = 0.0;
+              return m;
             }
-            // 5. Camadas Oclusoras dos Olhos / Hidden Shells (desativar para não cobrir o globo ocular)
+            // 7. Camadas Oclusoras dos Olhos / Hidden Shells (desativar para não cobrir o globo ocular)
             else if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage') || matName.includes('m_hide') || matName.includes('lacrimal')) {
               m.transparent = true;
               m.opacity = 0.0;
               m.depthWrite = false;
               m.visible = false;
+              return m;
             }
-            // 6. Globo Ocular / Íris / Esclera
+            // 8. Globo Ocular / Íris / Esclera
             else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball') || matName.includes('eyel_baked') || matName.includes('eyer_baked')) {
               m.roughness = 0.12; // Córnea nítida com reflexo especular equilibrado
               m.metalness = 0.0;
@@ -275,8 +336,12 @@ export class Renderer {
               m.depthWrite = true;
               if (m.color) m.color.setHex(0xffffff);
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.2;
+              return m;
             }
+            return m;
           });
+
+          node.material = Array.isArray(node.material) ? newMats : newMats[0];
         }
       }
     });
@@ -596,21 +661,34 @@ export class Renderer {
           side: baseSide,
           depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
           depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          polygonOffset: Boolean(orig.polygonOffset),
+          polygonOffsetFactor: orig.polygonOffsetFactor || 0,
+          polygonOffsetUnits: orig.polygonOffsetUnits || 0,
+          alphaToCoverage: Boolean(orig.alphaToCoverage),
           wireframe: false,
         });
         return mat;
       }
 
       case 'smooth': {
-        const mat = new THREE.MeshStandardMaterial({
+        const mat = new THREE.MeshPhysicalMaterial({
           color: orig.color ? orig.color.clone() : new THREE.Color(0xffffff),
           map: orig.map || null,
           alphaMap: orig.alphaMap || null,
+          normalMap: orig.normalMap || null,
           transparent: isAlpha || Boolean(orig.transparent),
           alphaTest: baseAlphaTest,
           side: baseSide,
           depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
           depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          polygonOffset: Boolean(orig.polygonOffset),
+          polygonOffsetFactor: orig.polygonOffsetFactor || 0,
+          polygonOffsetUnits: orig.polygonOffsetUnits || 0,
+          alphaToCoverage: Boolean(orig.alphaToCoverage),
+          anisotropy: orig.anisotropy || 0,
+          anisotropyRotation: orig.anisotropyRotation || 0,
+          sheen: orig.sheen || 0,
+          sheenColor: orig.sheenColor ? orig.sheenColor.clone() : null,
           roughness: 0.45 + (this._smoothLevel * 0.5),
           metalness: 0.02,
           wireframe: false,
@@ -628,6 +706,10 @@ export class Renderer {
           side: baseSide,
           depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
           depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          polygonOffset: Boolean(orig.polygonOffset),
+          polygonOffsetFactor: orig.polygonOffsetFactor || 0,
+          polygonOffsetUnits: orig.polygonOffsetUnits || 0,
+          alphaToCoverage: Boolean(orig.alphaToCoverage),
           roughness: 0.65,
           metalness: 0.05,
           wireframe: false,
@@ -642,6 +724,10 @@ export class Renderer {
           side: baseSide,
           depthWrite: orig.depthWrite !== undefined ? orig.depthWrite : true,
           depthTest: orig.depthTest !== undefined ? orig.depthTest : true,
+          polygonOffset: Boolean(orig.polygonOffset),
+          polygonOffsetFactor: orig.polygonOffsetFactor || 0,
+          polygonOffsetUnits: orig.polygonOffsetUnits || 0,
+          alphaToCoverage: Boolean(orig.alphaToCoverage),
           wireframe: false,
         });
         return mat;
