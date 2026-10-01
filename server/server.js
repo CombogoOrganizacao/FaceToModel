@@ -40,8 +40,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve web/ as the document root
-app.use(express.static(WEB_DIR));
+// Serve web/ as the document root with immediate revalidation for models/scripts
+app.use(express.static(WEB_DIR, {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.includes('/models/') || filePath.includes('/js/') || filePath.includes('/css/')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 
 // Catch-all → index.html (SPA support)
 app.get('*', (_req, res) => {

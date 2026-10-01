@@ -44,7 +44,7 @@ export class P2PClient {
     this.room = joinRoom({
       appId: APP_ID,
       relayUrls: HIGH_AVAILABILITY_RELAYS,
-      relayConfig: { warnOnRelayFailure: false }
+      relayConfig: { urls: HIGH_AVAILABILITY_RELAYS, warnOnRelayFailure: false }
     }, this.roomId);
 
     // Canal ultrarrápido para blendshapes

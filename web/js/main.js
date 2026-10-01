@@ -107,7 +107,7 @@ async function init3DEngine() {
     }, 500);
 
     // 5. Load Default 3D Model in Background
-    loadModel('/models/facecap.glb', 'facecap.glb');
+    loadModel('/models/facecap.glb?v=20261001_v2', 'facecap.glb');
   } catch (renderErr) {
     console.error('[main] Erro ao inicializar Renderer 3D:', renderErr);
     showToast('Aviso ao iniciar acelerador 3D: ' + renderErr.message, 'error');
@@ -1180,26 +1180,27 @@ function startInspectorLoop() {
 /* ─── Model Loader (Resilient Background Load) ────────────────────────────── */
 
 async function loadModel(url, filename = '', assetMap = {}) {
+  const displayName = (filename || url.split('/').pop() || 'model.glb').split('?')[0];
   $('model-name').textContent = 'Carregando...';
   $('model-coverage').textContent = 'Analisando morph targets';
 
   const selectPreset = /** @type {HTMLSelectElement} */ ($('select-model-preset'));
   if (selectPreset) {
-    const matchingOpt = Array.from(selectPreset.options).find((opt) => opt.value === url || (filename && opt.value.includes(filename)));
+    const matchingOpt = Array.from(selectPreset.options).find((opt) => opt.value === url || (displayName && opt.value.includes(displayName)));
     if (matchingOpt) {
       selectPreset.value = matchingOpt.value;
     }
   }
 
   try {
-    await renderer.loadModel(url, filename, assetMap);
+    await renderer.loadModel(url, displayName, assetMap);
     const coverage = renderer.blendshapeCoverage;
-    $('model-name').textContent = filename;
+    $('model-name').textContent = displayName;
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;
-    showToast(`Modelo "${filename}" pronto! (${coverage}/52 blendshapes)`, 'success');
+    showToast(`Modelo "${displayName}" pronto! (${coverage}/52 blendshapes)`, 'success');
   } catch (err) {
     console.error('Erro ao carregar modelo 3D:', err);
-    $('model-name').textContent = filename;
+    $('model-name').textContent = displayName;
     $('model-coverage').textContent = 'Pronto para uso';
     showToast(`Erro ao carregar modelo: ${err.message}`, 'error');
   }
