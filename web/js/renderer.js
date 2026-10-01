@@ -210,7 +210,7 @@ export class Renderer {
       model = gltf.scene;
     }
 
-    // Ensure all materials are double-sided and well lit
+    // Ensure all materials are double-sided, properly sorted for alpha blending, and eyes rendered realistically
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
@@ -219,6 +219,23 @@ export class Renderer {
           const mats = Array.isArray(node.material) ? node.material : [node.material];
           mats.forEach((m) => {
             m.side = THREE.DoubleSide;
+
+            const matName = (m.name || '').toLowerCase();
+            // Corrigir especificamente o problema de olhos embaçados / escuros no MetaHuman
+            if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage')) {
+              m.transparent = true;
+              m.opacity = 0.0; // Desativa a camada de oclusão turva sobre a íris
+              m.depthWrite = false;
+            } else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball')) {
+              m.roughness = 0.08; // Brilho vítreo e realista da córnea/olho
+              m.metalness = 0.0;
+              m.transparent = false;
+              m.depthWrite = true;
+            } else if (matName.includes('eyelashes') || matName.includes('eyebrow')) {
+              m.transparent = true;
+              m.depthWrite = true;
+              m.alphaTest = 0.45; // Evita artefatos de classificação de transparência nos cílios e sobrancelhas
+            }
           });
         }
       }
