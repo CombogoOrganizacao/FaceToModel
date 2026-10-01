@@ -74,16 +74,32 @@ function initP2PRoom() {
   const cameraUrl = `${baseUrl}/camera.html#room=${roomId}`;
   console.log('[main] URL da Câmera para QR Code:', cameraUrl);
 
-  // Desenhar QR Code no canvas do modal
-  const qrCanvas = $('qr-canvas');
-  if (window.QRCode && window.QRCode.toCanvas) {
-    window.QRCode.toCanvas(qrCanvas, cameraUrl, {
-      width: 180,
-      margin: 1,
-      color: { dark: '#000000', light: '#ffffff' }
-    }, (err) => {
-      if (err) console.error('Erro ao gerar QR Code:', err);
-    });
+  // Desenhar QR Code no container do modal
+  const qrTarget = $('qr-target');
+  qrTarget.innerHTML = '';
+
+  try {
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(qrTarget, {
+        text: cameraUrl,
+        width: 176,
+        height: 176,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } else {
+      // Fallback para API de imagem de QR Code
+      const qrImg = document.createElement('img');
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=176x176&data=${encodeURIComponent(cameraUrl)}`;
+      qrImg.alt = 'QR Code de Pareamento';
+      qrTarget.appendChild(qrImg);
+    }
+  } catch (err) {
+    console.error('Erro ao gerar QR Code, usando fallback:', err);
+    const qrImg = document.createElement('img');
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=176x176&data=${encodeURIComponent(cameraUrl)}`;
+    qrTarget.appendChild(qrImg);
   }
 
   // Inicializar Cliente P2P no Mac (Host)

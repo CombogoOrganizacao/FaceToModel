@@ -7,7 +7,7 @@
  * @module p2p-client
  */
 
-import { joinRoom } from 'https://cdn.jsdelivr.net/npm/trystero@0.20.0/nostr.js';
+import { joinRoom } from 'https://esm.sh/trystero/nostr';
 
 const APP_ID = 'facetomodel-p2p-v1';
 

@@ -20,7 +20,7 @@
   </script>
   
   <!-- QRCode Generator CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -207,9 +207,7 @@
       Aponte a câmera nativa do seu celular para o código abaixo:
     </p>
 
-    <div class="qr-box">
-      <canvas id="qr-canvas"></canvas>
-    </div>
+    <div class="qr-box" id="qr-target"></div>
 
     <div style="font-size: 11px; color: var(--label-tertiary); font-family: var(--font-mono); margin-bottom: 16px;" id="room-code-label">
       SALA: ...
