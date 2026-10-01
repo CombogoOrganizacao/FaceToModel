@@ -1,7 +1,6 @@
 {
   "version": 2,
   "outputDirectory": "web",
-  "cleanUrls": true,
   "headers": [
     {
       "source": "/(.*)",
@@ -12,6 +11,12 @@
     },
     {
       "source": "/models/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=604800, immutable" }
+      ]
+    },
+    {
+      "source": "/libs/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=604800, immutable" }
       ]

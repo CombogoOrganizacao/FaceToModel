@@ -38,7 +38,7 @@ let localVideoEl = null;
 
 /* ─── Init (Non-blocking Bootstrap) ───────────────────────────────────────── */
 
-document.addEventListener('DOMContentLoaded', () => {
+function bootstrap() {
   console.log('[main] Initializing FaceToModel (Apple HIG + P2P)');
 
   // 1. Setup Canvas & 3D Renderer
@@ -52,7 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. FPS Counter
   setInterval(() => {
-    $('fps-counter').textContent = `${renderer.fps} FPS`;
+    if (renderer) {
+      $('fps-counter').textContent = `${renderer.fps} FPS`;
+    }
   }, 500);
 
   // 4. Generate Unique Room & QR Code
@@ -60,7 +62,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 5. Load Default 3D Model in Background
   loadModel('/models/facecap.glb', 'facecap.glb');
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  bootstrap();
+}
 
 /* ─── P2P & QR Code Setup ─────────────────────────────────────────────────── */
 
