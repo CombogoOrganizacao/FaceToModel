@@ -218,7 +218,7 @@ export class Renderer {
       model = gltf.scene;
     }
 
-    // Ensure all materials are double-sided, properly sorted for alpha blending, and eyes rendered with Unreal Engine clarity
+    // Ensure all materials are double-sided, properly sorted for alpha blending, and skin/eyes rendered with Unreal Engine realistic PBR
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
@@ -229,27 +229,54 @@ export class Renderer {
             m.side = THREE.DoubleSide;
 
             const matName = (m.name || '').toLowerCase();
-            if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage')) {
+
+            // 1. Pele / Cabeça / Corpo do MetaHuman (eliminar efeito plástico/glossy excessivo)
+            if (matName.includes('head_shader') || matName.includes('body_mi') || matName.includes('skin') || matName.includes('face')) {
+              m.roughness = 0.58; // Rugosidade natural de pele humana (micro-textura)
+              m.metalness = 0.0;
+              if (m.specularIntensity !== undefined) m.specularIntensity = 0.35;
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45; // Suaviza reflexo IBL sobre a pele
+            }
+            // 2. Cabelo / Barba / Cartas de Pelo
+            else if (matName.includes('hair') || matName.includes('cards_m')) {
+              m.roughness = 0.65; // Cabelo sem brilho plástico
+              m.metalness = 0.0;
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.3;
+            }
+            // 3. Roupas e Tecidos
+            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth')) {
+              m.roughness = 0.85; // Tecido fosco
+              m.metalness = 0.0;
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.2;
+            }
+            // 4. Dentes e Boca
+            else if (matName.includes('teeth')) {
+              m.roughness = 0.28;
+              m.metalness = 0.0;
+            }
+            // 5. Camadas Oclusoras dos Olhos (desativar para não turvar)
+            else if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage')) {
               m.transparent = true;
               m.opacity = 0.0;
               m.depthWrite = false;
-              m.visible = false; // Desativa a camada de filme lacrimal e casca da córnea para evitar que cubra ou distorça os olhos
-            } else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball')) {
-              m.roughness = 0.04; // Reflexo especular ultra limpo e nítido
+              m.visible = false;
+            }
+            // 6. Globo Ocular / Íris / Esclera
+            else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball')) {
+              m.roughness = 0.12; // Córnea nítida com reflexo especular equilibrado
               m.metalness = 0.0;
               m.transparent = false;
               m.opacity = 1.0;
               m.depthWrite = true;
-              if (m.color) {
-                m.color.setHex(0xffffff); // Garante esclera e íris vibrantes sem escurecimento
-              }
-              if (m.map) {
-                m.map.needsUpdate = true;
-              }
-            } else if (matName.includes('eyelashes') || matName.includes('eyebrow')) {
+              if (m.color) m.color.setHex(0xffffff);
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.2;
+            }
+            // 7. Cílios e Sobrancelhas
+            else if (matName.includes('eyelashes') || matName.includes('eyebrow')) {
               m.transparent = true;
               m.depthWrite = true;
-              m.alphaTest = 0.45; // Evita artefatos de transparência nos cílios e sobrancelhas
+              m.alphaTest = 0.45;
+              m.roughness = 0.7;
             }
           });
         }
