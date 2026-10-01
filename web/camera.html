@@ -269,11 +269,21 @@
 
     } catch (err) {
       console.error('Falha de inicialização:', err);
+      let detailMsg = err.message || String(err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        detailMsg = 'Permissão da câmera negada. Vá em Ajustes > Safari > Câmera > Permitir e recarregue a página.';
+      }
       loaderOverlay.innerHTML = `
-        <h2 style="font-size: 18px; color: var(--sys-red);">Erro ao Inicializar</h2>
-        <p style="font-size: 13px; color: rgba(235,235,245,0.6); margin: 8px 0 16px;">${err.message}</p>
-        <button onclick="location.reload()" style="padding: 10px 20px; background: var(--sys-blue); color:#fff; border:none; border-radius:10px; font-weight:600;">Tentar Novamente</button>
+        <h2 style="font-size: 18px; color: var(--sys-red); font-weight: 600;">Erro ao Inicializar</h2>
+        <p style="font-size: 13px; color: rgba(235,235,245,0.7); margin: 10px 0 20px; line-height: 1.4; max-width: 280px; text-align: center;">${detailMsg}</p>
+        <button id="btn-retry-init" style="padding: 12px 24px; background: var(--sys-blue); color:#fff; border:none; border-radius:12px; font-weight:600; font-size:15px; cursor:pointer;-webkit-appearance:none;">Tentar Novamente</button>
       `;
+      const btn = document.getElementById('btn-retry-init');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          window.location.href = window.location.href;
+        });
+      }
     }
   }
 

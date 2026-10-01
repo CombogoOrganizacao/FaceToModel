@@ -33,27 +33,50 @@ export class P2PClient {
     // Conecta na sala descentralizada Nostr (signaling sem servidor próprio)
     this.room = joinRoom({ appId: APP_ID }, this.roomId);
 
-    // Canal binário ultrarrápido para blendshapes (Float32Array)
-    const [sendData, getData] = this.room.makeAction('blendshapes');
-    this.sendBlendshapesAction = sendData;
+    // Canal ultrarrápido para blendshapes
+    const action = this.room.makeAction('blendshapes');
+    if (action && typeof action.send === 'function') {
+      this.sendBlendshapesAction = (data) => action.send(data);
+      action.onMessage = (data, meta) => {
+        const peerId = meta?.peerId || null;
+        if (this.onBlendshapesReceived) {
+          this.onBlendshapesReceived(data, peerId);
+        }
+      };
+    } else if (Array.isArray(action)) {
+      // Fallback para versões legadas em tupla [send, get]
+      const [sendData, getData] = action;
+      this.sendBlendshapesAction = sendData;
+      getData((data, peerId) => {
+        if (this.onBlendshapesReceived) {
+          this.onBlendshapesReceived(data, peerId);
+        }
+      });
+    }
 
-    getData((data, peerId) => {
-      if (this.onBlendshapesReceived) {
-        this.onBlendshapesReceived(data, peerId);
-      }
-    });
-
-    this.room.onPeerJoin((peerId) => {
+    const handleJoin = (peerId) => {
       console.log(`[P2P] Dispositivo conectado: ${peerId}`);
       this.connectedPeers.add(peerId);
       if (this.onPeerJoinCallback) this.onPeerJoinCallback(peerId);
-    });
+    };
 
-    this.room.onPeerLeave((peerId) => {
+    const handleLeave = (peerId) => {
       console.log(`[P2P] Dispositivo desconectado: ${peerId}`);
       this.connectedPeers.delete(peerId);
       if (this.onPeerLeaveCallback) this.onPeerLeaveCallback(peerId);
-    });
+    };
+
+    if (typeof this.room.onPeerJoin === 'function') {
+      this.room.onPeerJoin(handleJoin);
+    } else {
+      this.room.onPeerJoin = handleJoin;
+    }
+
+    if (typeof this.room.onPeerLeave === 'function') {
+      this.room.onPeerLeave(handleLeave);
+    } else {
+      this.room.onPeerLeave = handleLeave;
+    }
   }
 
   /**
@@ -61,8 +84,8 @@ export class P2PClient {
    * @param {Record<string, number>|Float32Array} data
    */
   sendBlendshapes(data) {
-    if (this.sendBlendshapesAction && this.connectedPeers.size > 0) {
-      this.sendBlendshapesAction(data);
+    if (this.sendBlendshapesAction) {
+      this.sendBlendshapesAction(data).catch?.(() => {});
     }
   }
 
