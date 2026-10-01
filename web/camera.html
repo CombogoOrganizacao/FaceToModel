@@ -56,6 +56,25 @@
       z-index: 1;
     }
 
+    /* Face Framing Reticle Apple Style */
+    .face-reticle {
+      position: absolute;
+      top: 48%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 230px;
+      height: 310px;
+      border: 1.5px dashed rgba(255, 255, 255, 0.25);
+      border-radius: 50% 50% 45% 45%;
+      pointer-events: none;
+      z-index: 5;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .face-reticle.active {
+      border: 2px solid var(--sys-green);
+      box-shadow: 0 0 24px rgba(48, 209, 88, 0.25), inset 0 0 16px rgba(48, 209, 88, 0.15);
+    }
+
     /* Top HUD Apple Style */
     .top-hud {
       position: relative;
@@ -160,6 +179,9 @@
     </div>
   </div>
 
+  <!-- Face Reticle Guide -->
+  <div class="face-reticle" id="face-reticle"></div>
+
   <!-- Bottom Info -->
   <div class="bottom-hud">
     <span class="status-text" id="face-tracking-status">Rosto detectado: Aguardando...</span>
@@ -188,15 +210,37 @@
   const p2pLabel = document.getElementById('p2p-label');
   const fpsLabel = document.getElementById('fps-label');
   const faceTrackingStatus = document.getElementById('face-tracking-status');
+  const faceReticle = document.getElementById('face-reticle');
 
   let faceLandmarker = null;
   let p2pClient = null;
   let lastVideoTime = -1;
   let frameCount = 0;
   let lastFpsTime = performance.now();
+  let wakeLock = null;
+
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        console.log('[Camera] Screen Wake Lock ativo');
+      }
+    } catch (err) {
+      console.warn('[Camera] Wake Lock não disponível:', err);
+    }
+  }
+
+  document.addEventListener('visibilitychange', async () => {
+    if (wakeLock !== null && document.visibilityState === 'visible') {
+      await requestWakeLock();
+    }
+  });
 
   async function bootstrap() {
     try {
+      // 0. Screen Wake Lock
+      await requestWakeLock();
+
       // 1. Inicializar P2P
       p2pClient = new P2PClient(roomHash, false);
       p2pClient.onPeerJoinCallback = () => {
@@ -285,17 +329,32 @@
       if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
         faceTrackingStatus.textContent = 'Rastreamento: Ativo ✓';
         faceTrackingStatus.style.color = 'var(--sys-green)';
+        if (faceReticle) faceReticle.classList.add('active');
 
         const blendShapesMap = {};
         for (const shape of results.faceBlendshapes[0].categories) {
           blendShapesMap[shape.categoryName] = shape.score;
         }
 
+        // Extrair Rotação 3DoF da Cabeça (Pitch, Yaw, Roll)
+        let rotation = null;
+        if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
+          const m = results.facialTransformationMatrixes[0].data;
+          const pitch = Math.atan2(m[6], m[10]);
+          const yaw   = Math.atan2(-m[2], Math.sqrt(m[6] * m[6] + m[10] * m[10]));
+          const roll  = Math.atan2(m[1], m[0]);
+          rotation = { pitch: -pitch * 0.75, yaw: yaw * 0.75, roll: -roll * 0.75 };
+        }
+
         // Transmissão P2P instantânea para o Mac
-        p2pClient.sendBlendshapes(blendShapesMap);
+        p2pClient.sendBlendshapes({
+          blendShapes: blendShapesMap,
+          rotation: rotation
+        });
       } else {
         faceTrackingStatus.textContent = 'Aponte o rosto para a câmera';
         faceTrackingStatus.style.color = 'rgba(235,235,245,0.6)';
+        if (faceReticle) faceReticle.classList.remove('active');
       }
 
       frameCount++;

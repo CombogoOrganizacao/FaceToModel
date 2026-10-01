@@ -98,12 +98,19 @@ export class Renderer {
 
     /* ── Model state ── */
     this._model = null;
+    this._headBone = null;
     this._modelMap = {};
     this.blendshapeCoverage = 0;
     this.fps = 0;
     this._fpsFrames = 0;
     this._fpsLast = performance.now();
     this._running = false;
+
+    /* ── Organic Smoothing & 3DoF Rotation ── */
+    this._targetBlendshapes = {};
+    this._currentBlendshapes = {};
+    this._targetRotation = { x: 0, y: 0, z: 0 };
+    this._currentRotation = { x: 0, y: 0, z: 0 };
 
     /* ── ResizeObserver ── */
     this._resizeObserver = new ResizeObserver(() => this._onResize());
@@ -149,8 +156,20 @@ export class Renderer {
       }
     });
 
+    // Detect head bone if present (humanoid/ReadyPlayerMe models)
+    this._headBone = null;
+    model.traverse((node) => {
+      if (!this._headBone && (node.isBone || node.type === 'Bone') && /(head|c_head|neck)/i.test(node.name)) {
+        this._headBone = node;
+      }
+    });
+
     this._scene.add(model);
     this._model = model;
+
+    // Reset rotation targets
+    this._targetRotation = { x: 0, y: 0, z: 0 };
+    this._currentRotation = { x: 0, y: 0, z: 0 };
 
     // Blendshape map
     const { map, coverage } = buildModelMap(model);
@@ -158,17 +177,41 @@ export class Renderer {
     this.blendshapeCoverage = coverage;
 
     this.resetCamera();
-    console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52`);
+    console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 (HeadBone: ${this._headBone ? this._headBone.name : 'root'})`);
     return model;
   }
 
   /**
-   * Apply a set of ARKit/MediaPipe blendshape values to the model.
-   * @param {Record<string, number>} blendShapes
+   * Apply a set of ARKit/MediaPipe blendshape values and head rotation to the model.
+   * Uses continuous EMA smoothing in the render loop to eliminate camera jitter.
+   *
+   * @param {Record<string, number>} blendShapes - Map of ARKit blendshape keys to scores
+   * @param {{ pitch?: number, yaw?: number, roll?: number }} [rotation] - Head rotation in radians
    */
-  applyBlendShapes(blendShapes) {
-    if (!this._model) return;
-    applyBlendShapes(this._modelMap, blendShapes);
+  applyBlendShapes(blendShapes, rotation = null) {
+    if (blendShapes) {
+      this._targetBlendshapes = blendShapes;
+    }
+    if (rotation) {
+      this._targetRotation = {
+        x: rotation.pitch || 0,
+        y: rotation.yaw || 0,
+        z: rotation.roll || 0,
+      };
+    }
+  }
+
+  /**
+   * Returns top active blendshapes currently firing (> 0.05).
+   * @param {number} topN
+   * @returns {Array<{ name: string, value: number }>}
+   */
+  getActiveBlendshapes(topN = 5) {
+    return Object.entries(this._currentBlendshapes)
+      .map(([name, value]) => ({ name, value: Math.max(0, Math.min(1, value)) }))
+      .filter((item) => item.value > 0.05)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, topN);
   }
 
   /**
@@ -235,6 +278,29 @@ export class Renderer {
     requestAnimationFrame(() => this._loop());
 
     this._controls.update();
+
+    // ── 1. Organic Lerp / EMA Smoothing for Blendshapes ──
+    const alpha = 0.38;
+    for (const [key, target] of Object.entries(this._targetBlendshapes)) {
+      const cur = this._currentBlendshapes[key] || 0;
+      this._currentBlendshapes[key] = cur + (target - cur) * alpha;
+    }
+
+    if (this._model && Object.keys(this._currentBlendshapes).length > 0) {
+      applyBlendShapes(this._modelMap, this._currentBlendshapes);
+    }
+
+    // ── 2. Organic Head Pose / Rotation Lerp (3DoF) ──
+    const rotAlpha = 0.25;
+    this._currentRotation.x += (this._targetRotation.x - this._currentRotation.x) * rotAlpha;
+    this._currentRotation.y += (this._targetRotation.y - this._currentRotation.y) * rotAlpha;
+    this._currentRotation.z += (this._targetRotation.z - this._currentRotation.z) * rotAlpha;
+
+    if (this._headBone) {
+      this._headBone.rotation.set(this._currentRotation.x, this._currentRotation.y, this._currentRotation.z);
+    } else if (this._model) {
+      this._model.rotation.set(this._currentRotation.x, this._currentRotation.y, this._currentRotation.z);
+    }
 
     this._fpsFrames++;
     const now     = performance.now();

@@ -31,6 +31,17 @@
   <div class="canvas-wrapper">
     <canvas id="main-canvas"></canvas>
     
+    <!-- Overlay de Drag & Drop -->
+    <div class="drag-drop-overlay" id="drag-overlay">
+      <div class="drag-drop-box">
+        <svg class="svg-icon lg" viewBox="0 0 24 24">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="2" fill="none"/>
+        </svg>
+        <h3>Solte o Modelo 3D Aqui</h3>
+        <p>Formatos suportados: .glb e .gltf</p>
+      </div>
+    </div>
+
     <!-- Status HUD flutuante -->
     <div class="canvas-hud" id="hud-status">
       <div class="hud-dot" id="hud-dot"></div>
@@ -131,7 +142,17 @@
         </div>
       </div>
 
-      <!-- ── Seção 3: Visualização ── -->
+      <!-- ── Seção 3: Telemetria Facial em Tempo Real ── -->
+      <div class="section-group">
+        <span class="section-label">Telemetria de Expressões</span>
+        <div class="card-group" id="inspector-container" style="padding: 12px 14px; gap: 8px; display: flex; flex-direction: column;">
+          <div id="inspector-empty" style="font-size: 12px; color: var(--label-tertiary); text-align: center; padding: 4px 0;">
+            Aguardando expressões faciais...
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Seção 4: Visualização ── -->
       <div class="section-group">
         <span class="section-label">Ambiente</span>
         <div class="card-group">
@@ -217,6 +238,33 @@
     <button class="btn-apple secondary" id="btn-close-modal">Fechar</button>
   </div>
 </div>
+
+<!-- ── Modal Preview de Gravação ── -->
+<div class="modal-backdrop" id="modal-video-preview">
+  <div class="modal-sheet video-preview-sheet">
+    <div class="video-preview-header">
+      <h3 style="font-size: 17px; font-weight: 600; color: #fff;">Gravação Concluída</h3>
+      <span style="font-size: 13px; color: var(--label-secondary); font-family: var(--font-mono);" id="preview-duration-label">00:00</span>
+    </div>
+    
+    <div class="video-player-box">
+      <video id="preview-video-player" playsinline controls></video>
+    </div>
+
+    <div class="preview-actions">
+      <button class="btn-apple secondary" id="btn-discard-recording">Descartar</button>
+      <button class="btn-apple primary" id="btn-save-recording">
+        <svg class="svg-icon sm" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        Salvar Vídeo
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container Apple HIG -->
+<div class="toast-container" id="toast-container"></div>
 
 <script type="module" src="/js/main.js"></script>
 </body>

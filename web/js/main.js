@@ -2,11 +2,14 @@
  * @fileoverview FaceToModel — Main Orchestrator (Apple HIG & P2P WebRTC)
  *
  * Bootstraps the application:
- *   1. Initializes Three.js 3D Viewport with GLTF + KTX2 support
+ *   1. Initializes Three.js 3D Viewport with GLTF + KTX2 + EMA Lerp smoothing
  *   2. Sets up UI interaction listeners immediately (non-blocking)
  *   3. Generates unique Room ID and renders Apple-style QR Code for instant smartphone pairing
- *   4. Connects P2P WebRTC DataChannel (Trystero)
+ *   4. Connects P2P WebRTC DataChannel (Trystero) with 3DoF head rotation support
  *   5. Loads default 3D model in background without blocking UI
+ *   6. Handles Drag & Drop 3D model loading (.glb / .gltf)
+ *   7. Video recording preview modal & Apple toast notifications
+ *   8. Real-time telemetry inspector for active facial blendshapes
  *
  * @module main
  */
@@ -21,6 +24,22 @@ function $(id) {
   const el = document.getElementById(id);
   if (!el) throw new Error(`[main] Element #${id} not found`);
   return el;
+}
+
+/* ─── Apple Toast Notifications ───────────────────────────────────────────── */
+
+export function showToast(message, type = 'info') {
+  const container = $('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-12px) scale(0.95)';
+    setTimeout(() => toast.remove(), 350);
+  }, 3200);
 }
 
 /* ─── State ───────────────────────────────────────────────────────────────── */
@@ -47,8 +66,10 @@ function bootstrap() {
   recorder = new Recorder(canvas);
   renderer.startLoop();
 
-  // 2. Setup All UI Event Listeners Immediately (Ensures buttons work instantly)
+  // 2. Setup All UI Event Listeners Immediately
   setupUI();
+  setupDragAndDrop();
+  startInspectorLoop();
 
   // 3. FPS Counter
   setInterval(() => {
@@ -97,7 +118,6 @@ function initP2PRoom() {
         correctLevel: QRCode.CorrectLevel.M
       });
     } else {
-      // Fallback para API de imagem de QR Code
       const qrImg = document.createElement('img');
       qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=176x176&data=${encodeURIComponent(cameraUrl)}`;
       qrImg.alt = 'QR Code de Pareamento';
@@ -119,6 +139,7 @@ function initP2PRoom() {
     $('p2p-status-sub').textContent = 'Smartphone conectado em tempo real';
     $('p2p-status-sub').style.color = 'var(--sys-green)';
     closeQRModal();
+    showToast('Smartphone conectado em tempo real!', 'success');
   };
 
   p2pClient.onPeerLeaveCallback = () => {
@@ -126,10 +147,16 @@ function initP2PRoom() {
     $('hud-text').textContent = 'Aguardando Sensor';
     $('p2p-status-sub').textContent = 'Escanear QR Code com a câmera';
     $('p2p-status-sub').style.color = 'var(--label-secondary)';
+    showToast('Smartphone desconectado', 'info');
   };
 
-  p2pClient.onBlendshapesReceived = (blendShapes) => {
-    renderer.applyBlendShapes(blendShapes);
+  // Suporte a dados avançados { blendShapes, rotation }
+  p2pClient.onBlendshapesReceived = (data) => {
+    if (data && data.blendShapes) {
+      renderer.applyBlendShapes(data.blendShapes, data.rotation);
+    } else if (data) {
+      renderer.applyBlendShapes(data, null);
+    }
   };
 
   p2pClient.connect();
@@ -153,7 +180,7 @@ function setupUI() {
     if (!file) return;
     const url = URL.createObjectURL(file);
     await loadModel(url, file.name);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
     fileInput.value = '';
   });
 
@@ -161,7 +188,10 @@ function setupUI() {
   $('chk-wireframe').addEventListener('change', (e) => {
     renderer.setWireframe(e.target.checked);
   });
-  $('btn-reset-view').addEventListener('click', () => renderer.resetCamera());
+  $('btn-reset-view').addEventListener('click', () => {
+    renderer.resetCamera();
+    showToast('Câmera redefinida', 'info');
+  });
 
   // Câmera Local Mac
   $('btn-toggle-local-cam').addEventListener('click', () => toggleLocalCamera());
@@ -178,6 +208,47 @@ function closeQRModal() {
   $('modal-qr').classList.remove('open');
 }
 
+/* ─── Drag & Drop 3D Model (.glb / .gltf) ──────────────────────────────────── */
+
+function setupDragAndDrop() {
+  const dropOverlay = $('drag-overlay');
+  let dragCounter = 0;
+
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    dropOverlay.classList.add('active');
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      dropOverlay.classList.remove('active');
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragCounter = 0;
+    dropOverlay.classList.remove('active');
+
+    const file = e.dataTransfer?.files?.[0];
+    if (file && (file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf'))) {
+      const url = URL.createObjectURL(file);
+      await loadModel(url, file.name);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } else if (file) {
+      showToast('Formato não suportado. Use arquivos .glb ou .gltf', 'error');
+    }
+  });
+}
+
 /* ─── Local Webcam Tracking ───────────────────────────────────────────────── */
 
 async function toggleLocalCamera() {
@@ -191,6 +262,7 @@ async function toggleLocalCamera() {
     title.textContent = 'Câmera deste Mac';
     $('hud-dot').className = 'hud-dot';
     $('hud-text').textContent = 'Aguardando Sensor';
+    showToast('Câmera local desativada', 'info');
   } else {
     badge.textContent = 'Iniciando...';
     try {
@@ -200,11 +272,12 @@ async function toggleLocalCamera() {
       title.textContent = 'Câmera do Mac (Ativa)';
       $('hud-dot').className = 'hud-dot active';
       $('hud-text').textContent = 'Câmera Local Ativa';
+      showToast('Câmera do Mac ativada com sucesso', 'success');
     } catch (err) {
       console.error('Erro na câmera local:', err);
       badge.textContent = 'Erro';
       badge.style.color = 'var(--sys-red)';
-      alert('Não foi possível iniciar a câmera local: ' + err.message);
+      showToast('Não foi possível iniciar a câmera local: ' + err.message, 'error');
     }
   }
 }
@@ -226,6 +299,7 @@ async function startLocalCamera() {
       delegate: 'GPU'
     },
     outputFaceBlendshapes: true,
+    outputFacialTransformationMatrixes: true,
     runningMode: 'VIDEO',
     numFaces: 1
   });
@@ -266,20 +340,37 @@ function runLocalLoop() {
       for (const shape of results.faceBlendshapes[0].categories) {
         blendShapesMap[shape.categoryName] = shape.score;
       }
-      renderer.applyBlendShapes(blendShapesMap);
+
+      // Rotação 3DoF
+      let rotation = null;
+      if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
+        const m = results.facialTransformationMatrixes[0].data;
+        const pitch = Math.atan2(m[6], m[10]);
+        const yaw   = Math.atan2(-m[2], Math.sqrt(m[6] * m[6] + m[10] * m[10]));
+        const roll  = Math.atan2(m[1], m[0]);
+        rotation = { pitch: -pitch * 0.75, yaw: yaw * 0.75, roll: -roll * 0.75 };
+      }
+
+      renderer.applyBlendShapes(blendShapesMap, rotation);
     }
   }
   requestAnimationFrame(runLocalLoop);
 }
 
-/* ─── Recording ───────────────────────────────────────────────────────────── */
+/* ─── Recording with Native Video Preview Modal ───────────────────────────── */
 
 function setupRecording() {
   const shutter = $('btn-shutter');
   const label = $('record-label');
   const timer = $('record-timer');
-  const btnDownload = $('btn-download-video');
   const canvas = $('main-canvas');
+  const previewModal = $('modal-video-preview');
+  const videoPlayer = /** @type {HTMLVideoElement} */ ($('preview-video-player'));
+  const btnSave = $('btn-save-recording');
+  const btnDiscard = $('btn-discard-recording');
+  const durationLabel = $('preview-duration-label');
+
+  let currentVideoUrl = null;
 
   shutter.addEventListener('click', async () => {
     if (!recorder.isRecording) {
@@ -287,17 +378,23 @@ function setupRecording() {
         await recorder.startRecording();
         shutter.classList.add('recording');
         label.textContent = 'Parar Gravação';
-        btnDownload.style.display = 'none';
+        showToast('Gravação iniciada', 'info');
       } catch (err) {
-        alert('Erro ao iniciar gravação: ' + err.message);
+        showToast('Erro ao iniciar gravação: ' + err.message, 'error');
       }
     } else {
       const url = await recorder.stopRecording();
       shutter.classList.remove('recording');
       label.textContent = 'Iniciar Gravação';
+      const dur = timer.textContent;
       timer.textContent = '';
+
       if (url) {
-        btnDownload.style.display = 'flex';
+        currentVideoUrl = url;
+        videoPlayer.src = url;
+        durationLabel.textContent = dur || '00:00';
+        previewModal.classList.add('open');
+        videoPlayer.play().catch(() => {});
       }
     }
   });
@@ -306,11 +403,87 @@ function setupRecording() {
     timer.textContent = formatDuration(e.detail.seconds);
   });
 
-  btnDownload.addEventListener('click', () => {
-    const lastUrl = recorder.getLastRecordingURL();
-    const ext = lastUrl?.includes('mp4') ? 'mp4' : 'webm';
-    recorder.downloadRecording(`facetomodel-capture-${Date.now()}.${ext}`);
+  btnSave.addEventListener('click', () => {
+    if (currentVideoUrl) {
+      const ext = currentVideoUrl.includes('mp4') ? 'mp4' : 'webm';
+      recorder.downloadRecording(`FaceToModel_Gravacao_${Date.now()}.${ext}`);
+      showToast('Download do vídeo iniciado!', 'success');
+    }
+    previewModal.classList.remove('open');
+    videoPlayer.pause();
   });
+
+  btnDiscard.addEventListener('click', () => {
+    previewModal.classList.remove('open');
+    videoPlayer.pause();
+    videoPlayer.src = '';
+    currentVideoUrl = null;
+    showToast('Gravação descartada', 'info');
+  });
+
+  previewModal.addEventListener('click', (e) => {
+    if (e.target === previewModal) {
+      previewModal.classList.remove('open');
+      videoPlayer.pause();
+    }
+  });
+}
+
+/* ─── Real-time Live Expression Inspector ─────────────────────────────────── */
+
+function startInspectorLoop() {
+  const container = $('inspector-container');
+  const emptyEl = $('inspector-empty');
+  if (!container) return;
+
+  const friendlyNames = {
+    eyeBlinkLeft: 'Piscar Olho (E)',
+    eyeBlinkRight: 'Piscar Olho (D)',
+    jawOpen: 'Abertura da Boca',
+    mouthSmileLeft: 'Sorriso (E)',
+    mouthSmileRight: 'Sorriso (D)',
+    browInnerUp: 'Elevar Sobrancelha',
+    browDownLeft: 'Franzir Sobrancelha (E)',
+    browDownRight: 'Franzir Sobrancelha (D)',
+    mouthFunnel: 'Boca Funil (O)',
+    mouthPucker: 'Bico (U)',
+    cheekPuff: 'Inflar Bochechas'
+  };
+
+  setInterval(() => {
+    if (!renderer) return;
+    const active = renderer.getActiveBlendshapes(4);
+
+    if (active.length === 0) {
+      if (emptyEl) emptyEl.style.display = 'block';
+      const oldRows = container.querySelectorAll('.inspector-row');
+      oldRows.forEach(r => r.remove());
+      return;
+    }
+
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    let html = '';
+    for (const item of active) {
+      const label = friendlyNames[item.name] || item.name;
+      const pct = Math.round(item.value * 100);
+      html += `
+        <div class="inspector-row">
+          <div class="inspector-meta">
+            <span>${label}</span>
+            <span style="font-family: var(--font-mono);">${pct}%</span>
+          </div>
+          <div class="inspector-track">
+            <div class="inspector-fill" style="width: ${pct}%"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    const currentRows = container.querySelectorAll('.inspector-row');
+    currentRows.forEach(r => r.remove());
+    container.insertAdjacentHTML('beforeend', html);
+  }, 100);
 }
 
 /* ─── Model Loader (Resilient Background Load) ────────────────────────────── */
@@ -324,9 +497,11 @@ async function loadModel(url, filename) {
     const coverage = renderer.blendshapeCoverage;
     $('model-name').textContent = filename;
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;
+    showToast(`Modelo "${filename}" pronto! (${coverage}/52 blendshapes)`, 'success');
   } catch (err) {
     console.error('Erro ao carregar modelo 3D:', err);
     $('model-name').textContent = filename;
     $('model-coverage').textContent = 'Pronto para uso';
+    showToast(`Erro ao carregar modelo: ${err.message}`, 'error');
   }
 }
