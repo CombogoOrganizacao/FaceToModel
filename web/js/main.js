@@ -136,8 +136,8 @@ async function initP2PRoom() {
   $('room-code-label').textContent = `SALA: ${roomId.toUpperCase()}`;
 
   let hostIp = window.location.hostname;
-  let port = window.location.port || '3000';
   let proto = window.location.protocol;
+  let portStr = '';
 
   // Se estiver acessando por localhost no Mac, busca o IP real da rede local Wi-Fi
   if (hostIp === 'localhost' || hostIp === '127.0.0.1') {
@@ -150,11 +150,20 @@ async function initP2PRoom() {
         }
       }
     } catch (_) {}
+    const p = window.location.port || '3000';
+    portStr = `:${p}`;
+  } else if (window.location.port && window.location.port !== '80' && window.location.port !== '443') {
+    portStr = `:${window.location.port}`;
   }
 
   // Criar URL completa acessível na rede Wi-Fi pelo smartphone
-  const cameraUrl = `${proto}//${hostIp}:${port}/camera.html#room=${roomId}&host=${hostIp}`;
+  const cameraUrl = `${proto}//${hostIp}${portStr}/camera.html#room=${roomId}&host=${hostIp}`;
   console.log('[main] URL da Câmera para QR Code:', cameraUrl);
+
+  const roomLabel = $('room-code-label');
+  if (roomLabel) {
+    roomLabel.innerHTML = `SALA: ${roomId.toUpperCase()}<br/><a href="${cameraUrl}" target="_blank" style="color:var(--sys-blue);word-break:break-all;text-decoration:none;font-size:10px;margin-top:4px;display:inline-block;">${cameraUrl}</a>`;
+  }
 
   // Desenhar QR Code no container do modal
   const qrTarget = $('qr-target');

@@ -206,6 +206,22 @@
   <p style="font-size: 13px; color: rgba(235,235,245,0.6);" id="loader-sub">Aguardando autorização da câmera</p>
 </div>
 
+<script>
+  // Captura erros globais antes dos módulos ES6 para não travar na tela preta em celulares
+  window.addEventListener('error', function(e) {
+    var sub = document.getElementById('loader-sub');
+    var title = document.getElementById('loader-title');
+    if (sub) sub.textContent = 'Erro ao carregar: ' + (e.message || 'Falha de script');
+    if (title) title.textContent = 'Atenção';
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    var sub = document.getElementById('loader-sub');
+    var title = document.getElementById('loader-title');
+    if (sub) sub.textContent = 'Falha assíncrona: ' + (e.reason?.message || e.reason || 'Erro de rede');
+    if (title) title.textContent = 'Atenção';
+  });
+</script>
+
 <script type="module">
   import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
   import { P2PClient } from '/js/p2p-client.js';
@@ -282,7 +298,7 @@
       p2pClient = new P2PClient(roomHash, false);
       p2pClient.onPeerJoinCallback = () => {
         p2pDot.className = 'pill-dot connected';
-        p2pLabel.textContent = 'Conectado ✓';
+        p2pLabel.textContent = 'Conectado';
       };
       p2pClient.onPeerLeaveCallback = () => {
         p2pDot.className = 'pill-dot';
@@ -372,7 +388,7 @@
       const results = faceLandmarker.detectForVideo(video, performance.now());
 
       if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
-        faceTrackingStatus.textContent = 'Rastreamento: Ativo ✓';
+        faceTrackingStatus.textContent = 'Rastreamento: Ativo';
         faceTrackingStatus.style.color = 'var(--sys-green)';
         if (faceReticle) faceReticle.classList.add('active');
 
