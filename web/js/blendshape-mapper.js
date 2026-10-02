@@ -356,3 +356,6 @@ export function applyBlendShapes(modelMap, blendShapes) {
     }
   }
 }
+
+export const ARKIT_BLENDSHAPE_MAP = FACECAP_MAP;
+

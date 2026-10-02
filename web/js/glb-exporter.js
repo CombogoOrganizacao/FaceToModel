@@ -15,7 +15,6 @@
  */
 
 import { GLTFExporter } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/exporters/GLTFExporter.js';
-import { ARKIT_BLENDSHAPE_MAP } from './blendshape-mapper.js';
 
 /**
  * Builds a THREE.AnimationClip from MotionTimeline recorded frames.
