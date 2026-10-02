@@ -24,6 +24,7 @@ import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
+import { ensureModelBlendshapes } from './blendshape-synthesizer.js';
 import { modelCache } from './model-cache.js';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
@@ -421,7 +422,19 @@ export class Renderer {
     this._currentRotation = { x: 0, y: 0, z: 0 };
 
     // Blendshape map
-    const { map, coverage } = buildModelMap(model);
+    let { map, coverage } = buildModelMap(model);
+
+    // Auto-Synthesize ARKit 52 Blendshapes if absent (< 10 blendshapes)
+    if (coverage < 10) {
+      const synthesizedCount = ensureModelBlendshapes(model, coverage);
+      if (synthesizedCount > 0) {
+        const updated = buildModelMap(model);
+        map = updated.map;
+        coverage = updated.coverage;
+        console.log(`[Renderer] Auto-Blendshapes: ${synthesizedCount} expressões ARKit geradas com sucesso. Nova cobertura: ${coverage}/52`);
+      }
+    }
+
     this._modelMap          = map;
     this.blendshapeCoverage = coverage;
 

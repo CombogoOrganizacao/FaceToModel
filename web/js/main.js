@@ -19,6 +19,9 @@ import { Recorder, formatDuration } from './recorder.js';
 import { MotionTimeline } from './motion-timeline.js';
 import { GlassesFilter } from './glasses-filter.js';
 import { exportModelToGLB, buildAnimationClip } from './glb-exporter.js';
+import { ExpressionControls, EXPRESSION_CATEGORIES } from './expression-controls.js';
+import { ensureModelBlendshapes } from './blendshape-synthesizer.js';
+import { buildModelMap } from './blendshape-mapper.js';
 
 /* ─── DOM Helpers ─────────────────────────────────────────────────────────── */
 
@@ -53,6 +56,7 @@ let p2pClient = null;
 let roomId = null;
 let currentModelFilename = 'facecap.glb';
 const glassesFilter = new GlassesFilter();
+let expressionControls = null;
 
 // Local camera & media state
 let localTracking = false;
@@ -102,6 +106,7 @@ async function init3DEngine() {
     renderer.startLoop();
     startInspectorLoop();
     setupTimeline();
+    setupExpressionControls();
 
     // 4. Sensor HUD & FPS Counter
     setInterval(() => {
@@ -1144,6 +1149,224 @@ function setupTimeline() {
   });
 }
 
+/* ─── Expression Controls & Testing Suite (ARKit Toolset Style) ────────────── */
+
+function setupExpressionControls() {
+  expressionControls = new ExpressionControls({
+    onApply: (blendShapes) => {
+      if (renderer && (!motionTimeline || !motionTimeline.isPlaying)) {
+        renderer.applyBlendShapes(blendShapes);
+      }
+    }
+  });
+
+  const renderCategorySliders = (categoryKey) => {
+    const container = $('exp-sliders-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const catData = EXPRESSION_CATEGORIES[categoryKey];
+    if (!catData) return;
+
+    catData.shapes.forEach((shapeName) => {
+      const val = expressionControls.values[shapeName] || 0;
+      const pct = Math.round(val * 100);
+
+      const row = document.createElement('div');
+      row.className = 'slider-control-group';
+      row.style.marginBottom = '6px';
+      row.innerHTML = `
+        <div class="slider-header" style="margin-bottom: 2px;">
+          <span class="slider-title" style="font-size: 11px;">${shapeName}</span>
+          <span class="slider-value" id="exp-val-${shapeName}" style="font-size: 11px;">${pct}%</span>
+        </div>
+        <input type="range" id="exp-slider-${shapeName}" min="0" max="1" step="0.01" value="${val}" class="apple-slider" />
+      `;
+
+      const input = row.querySelector('input');
+      input.addEventListener('input', (e) => {
+        const num = parseFloat(e.target.value);
+        expressionControls.setShape(shapeName, num);
+        const label = document.getElementById(`exp-val-${shapeName}`);
+        if (label) label.textContent = `${Math.round(num * 100)}%`;
+      });
+
+      container.appendChild(row);
+    });
+  };
+
+  // Render initial category
+  renderCategorySliders('brows');
+
+  // Category tab buttons
+  const catTabs = document.querySelectorAll('#exp-category-tabs .shading-pill');
+  catTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      catTabs.forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      const cat = tab.getAttribute('data-cat');
+      expressionControls.activeCategory = cat;
+      renderCategorySliders(cat);
+    });
+  });
+
+  // Presets
+  const presetBtns = document.querySelectorAll('.btn-exp-preset');
+  presetBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const preset = btn.getAttribute('data-preset');
+      expressionControls.applyPreset(preset);
+      showToast(`Preset "${btn.textContent}" aplicado`, 'info');
+    });
+  });
+
+  // Test All demo mode
+  const btnTestAll = $('btn-exp-test-all');
+  if (btnTestAll) {
+    btnTestAll.addEventListener('click', () => {
+      if (expressionControls.isTestingAll) {
+        expressionControls.stopTestAll();
+        btnTestAll.classList.remove('active');
+        btnTestAll.style.background = '';
+        showToast('Demonstração de expressões pausada', 'info');
+      } else {
+        btnTestAll.classList.add('active');
+        btnTestAll.style.background = 'rgba(99, 102, 241, 0.4)';
+        showToast('Executando Test All (52 expressões ARKit)...', 'info');
+        expressionControls.startTestAll(() => {
+          btnTestAll.classList.remove('active');
+          btnTestAll.style.background = '';
+          showToast('Demonstração concluída', 'success');
+        });
+      }
+    });
+  }
+
+  // Zero All
+  const btnZeroAll = $('btn-exp-zero-all');
+  if (btnZeroAll) {
+    btnZeroAll.addEventListener('click', () => {
+      expressionControls.zeroAll();
+      showToast('Expressões faciais zeradas', 'info');
+    });
+  }
+
+  // 2D Gaze Trackpad (Look Around)
+  setupGazePad();
+
+  // Botão Manual no Banner de Auto-Geração
+  const btnGenerate = $('btn-generate-blendshapes');
+  if (btnGenerate) {
+    btnGenerate.addEventListener('click', () => {
+      if (!renderer || !renderer.getModel()) {
+        showToast('Nenhum modelo carregado na cena.', 'info');
+        return;
+      }
+      const model = renderer.getInnerModel();
+      const added = ensureModelBlendshapes(model, 0);
+      if (added > 0) {
+        const updated = buildModelMap(model);
+        renderer._modelMap = updated.map;
+        renderer.blendshapeCoverage = updated.coverage;
+        $('model-coverage').textContent = `${updated.coverage} / 52 blendshapes mapeados`;
+        const banner = $('box-auto-generate-blendshapes');
+        if (banner) banner.style.display = 'none';
+        showToast(`${added} blendshapes ARKit sintetizados com sucesso!`, 'success');
+      } else {
+        showToast('Não foi possível identificar malha facial compatível.', 'error');
+      }
+    });
+  }
+}
+
+function setupGazePad() {
+  const pad = $('gaze-pad');
+  const thumb = $('gaze-thumb');
+  const btnReset = $('btn-reset-gaze');
+  if (!pad || !thumb) return;
+
+  let isDraggingGaze = false;
+
+  const updateGaze = (e) => {
+    const rect = pad.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+    thumb.style.left = `${x}px`;
+    thumb.style.top = `${y}px`;
+
+    // Normalized -1 to +1
+    const normX = ((x / rect.width) * 2) - 1;
+    const normY = ((y / rect.height) * 2) - 1;
+
+    // Apply to eyeLook shapes
+    if (expressionControls) {
+      // Horizontal
+      if (normX > 0) {
+        expressionControls.setShape('eyeLookOutRight', normX);
+        expressionControls.setShape('eyeLookInLeft', normX);
+        expressionControls.setShape('eyeLookOutLeft', 0);
+        expressionControls.setShape('eyeLookInRight', 0);
+      } else {
+        expressionControls.setShape('eyeLookOutLeft', -normX);
+        expressionControls.setShape('eyeLookInRight', -normX);
+        expressionControls.setShape('eyeLookOutRight', 0);
+        expressionControls.setShape('eyeLookInLeft', 0);
+      }
+
+      // Vertical (Y is inverted in screen space: top is up)
+      if (normY < 0) {
+        expressionControls.setShape('eyeLookUpLeft', -normY);
+        expressionControls.setShape('eyeLookUpRight', -normY);
+        expressionControls.setShape('eyeLookDownLeft', 0);
+        expressionControls.setShape('eyeLookDownRight', 0);
+      } else {
+        expressionControls.setShape('eyeLookDownLeft', normY);
+        expressionControls.setShape('eyeLookDownRight', normY);
+        expressionControls.setShape('eyeLookUpLeft', 0);
+        expressionControls.setShape('eyeLookUpRight', 0);
+      }
+    }
+  };
+
+  const resetGaze = () => {
+    thumb.style.left = '50%';
+    thumb.style.top = '50%';
+    if (expressionControls) {
+      ['eyeLookOutRight', 'eyeLookInLeft', 'eyeLookOutLeft', 'eyeLookInRight',
+       'eyeLookUpLeft', 'eyeLookUpRight', 'eyeLookDownLeft', 'eyeLookDownRight'].forEach((s) => {
+        expressionControls.setShape(s, 0);
+      });
+    }
+  };
+
+  pad.addEventListener('pointerdown', (e) => {
+    isDraggingGaze = true;
+    pad.setPointerCapture(e.pointerId);
+    updateGaze(e);
+  });
+
+  pad.addEventListener('pointermove', (e) => {
+    if (isDraggingGaze) {
+      updateGaze(e);
+    }
+  });
+
+  const endGaze = (e) => {
+    if (isDraggingGaze) {
+      isDraggingGaze = false;
+      try { pad.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  };
+
+  pad.addEventListener('pointerup', endGaze);
+  pad.addEventListener('pointercancel', endGaze);
+
+  if (btnReset) {
+    btnReset.addEventListener('click', resetGaze);
+  }
+}
+
 /* ─── Real-time Live Expression Inspector ─────────────────────────────────── */
 
 function startInspectorLoop() {
@@ -1258,6 +1481,12 @@ async function loadModel(url, filename = '', assetMap = {}) {
     const coverage = renderer.blendshapeCoverage;
     $('model-name').textContent = displayName;
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;
+
+    const bannerGen = $('box-auto-generate-blendshapes');
+    if (bannerGen) {
+      bannerGen.style.display = coverage < 10 ? 'block' : 'none';
+    }
+
     showToast(`Modelo "${displayName}" pronto! (${coverage}/52 blendshapes)`, 'success');
   } catch (err) {
     console.error('Erro ao carregar modelo 3D:', err);

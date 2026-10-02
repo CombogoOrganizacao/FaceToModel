@@ -502,7 +502,94 @@
         </div>
       </div>
 
-      <!-- ── Accordion 5: Telemetria Facial em Tempo Real ── -->
+      <!-- ── Accordion 5: Controles de Expressões (ARKit Toolset) ── -->
+      <div class="accordion-item" id="acc-expressions">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.75" fill="none"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" fill="none"/>
+              <line x1="9" y1="9" x2="9.01" y2="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="15" y1="9" x2="15.01" y2="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+            <span>Controles de Expressões</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
+          <!-- Banner de Auto-Geração (Visível quando o modelo não tem 52 blendshapes) -->
+          <div id="box-auto-generate-blendshapes" class="card-row" style="margin-bottom: 12px; background: rgba(99, 102, 241, 0.12); border: 0.5px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 10px; display: none;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 12px; font-weight: 600; color: #fff;">Modelo sem Blendshapes</span>
+              <span style="font-size: 11px; color: var(--label-secondary);">Gerar automaticamente as 52 expressões faciais da Apple neste modelo.</span>
+              <button class="btn-apple" id="btn-generate-blendshapes" style="margin-top: 6px; padding: 6px 12px; font-size: 11px; background: var(--sys-blue); color: #fff;">
+                Sintetizar 52 Blendshapes ARKit
+              </button>
+            </div>
+          </div>
+
+          <!-- Barra de Ações Rápidas (Test All, Zero All) -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px;">
+            <button class="btn-apple" id="btn-exp-test-all" style="font-size: 11px; padding: 6px 8px; justify-content: center;">
+              <svg class="svg-icon sm" style="width:13px; height:13px;" viewBox="0 0 24 24">
+                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+              </svg>
+              <span>Test All (Demo)</span>
+            </button>
+            <button class="btn-apple" id="btn-exp-zero-all" style="font-size: 11px; padding: 6px 8px; justify-content: center;">
+              <svg class="svg-icon sm" style="width:13px; height:13px;" viewBox="0 0 24 24">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+                <path d="M3 3v5h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+              </svg>
+              <span>Zerar Tudo</span>
+            </button>
+          </div>
+
+          <!-- Presets Rápidos -->
+          <div style="margin-bottom: 12px;">
+            <span class="control-label" style="margin-bottom: 6px; display: block;">Presets de Expressões</span>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+              <button class="btn-text-subtle btn-exp-preset" data-preset="smile" style="font-size: 10px; justify-content: center; background: rgba(255,255,255,0.06);">Sorriso</button>
+              <button class="btn-text-subtle btn-exp-preset" data-preset="surprised" style="font-size: 10px; justify-content: center; background: rgba(255,255,255,0.06);">Surpresa</button>
+              <button class="btn-text-subtle btn-exp-preset" data-preset="blink" style="font-size: 10px; justify-content: center; background: rgba(255,255,255,0.06);">Piscada</button>
+              <button class="btn-text-subtle btn-exp-preset" data-preset="angry" style="font-size: 10px; justify-content: center; background: rgba(255,255,255,0.06);">Raiva</button>
+              <button class="btn-text-subtle btn-exp-preset" data-preset="thinking" style="font-size: 10px; justify-content: center; background: rgba(255,255,255,0.06);">Dúvida</button>
+              <button class="btn-text-subtle btn-exp-preset" data-preset="neutral" style="font-size: 10px; justify-content: center; background: rgba(255,255,255,0.06);">Neutro</button>
+            </div>
+          </div>
+
+          <!-- Joystick 2D de Olhar (Look Around) -->
+          <div style="margin-bottom: 14px; padding: 10px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 0.5px solid var(--border-divider);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span class="control-label">Direção do Olhar (Look Around)</span>
+              <button class="btn-text-subtle" id="btn-reset-gaze" style="font-size: 10px; padding: 2px 4px;">Centralizar</button>
+            </div>
+            <div id="gaze-pad" style="position: relative; width: 100%; height: 90px; background: rgba(0, 0, 0, 0.35); border-radius: 6px; border: 0.5px solid var(--border-subtle); display: flex; align-items: center; justify-content: center; cursor: crosshair; touch-action: none;">
+              <!-- Crosshair center lines -->
+              <div style="position: absolute; width: 100%; height: 0.5px; background: rgba(255, 255, 255, 0.08); pointer-events: none;"></div>
+              <div style="position: absolute; height: 100%; width: 0.5px; background: rgba(255, 255, 255, 0.08); pointer-events: none;"></div>
+              <!-- Joystick thumb dot -->
+              <div id="gaze-thumb" style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--sys-blue); box-shadow: 0 0 8px var(--sys-blue); pointer-events: none; transform: translate(-50%, -50%); left: 50%; top: 50%;"></div>
+            </div>
+          </div>
+
+          <!-- Abas de Regiões Anatômicas (Sobrancelhas, Olhos, Boca, Mandíbula, Bochechas) -->
+          <div class="shading-grid" id="exp-category-tabs" style="grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 10px;">
+            <button class="shading-pill active" data-cat="brows">Sobranc.</button>
+            <button class="shading-pill" data-cat="eyes">Olhos</button>
+            <button class="shading-pill" data-cat="mouth">Boca</button>
+            <button class="shading-pill" data-cat="jaw">Mandíbula</button>
+            <button class="shading-pill" data-cat="cheeks">Bochechas</button>
+          </div>
+
+          <!-- Lista de Sliders de Expressão (Injetados dinamicamente via JS) -->
+          <div id="exp-sliders-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; padding-right: 4px;"></div>
+        </div>
+      </div>
+
+      <!-- ── Accordion 6: Telemetria Facial em Tempo Real ── -->
       <div class="accordion-item" id="acc-telemetry">
         <button class="accordion-header" type="button">
           <div class="accordion-title">
