@@ -73,7 +73,6 @@ function bootstrap() {
     setupModelPresets();
     setupShading();
     setupBackground();
-    setupPiP();
     setupMediaDevices();
   } catch (uiErr) {
     console.error('[main] Erro ao registrar UI:', uiErr);
@@ -122,14 +121,30 @@ if (document.readyState === 'loading') {
 
 /* ─── P2P & QR Code Setup ─────────────────────────────────────────────────── */
 
-function initP2PRoom() {
+async function initP2PRoom() {
   // Gerar ID de sala único de 6 caracteres
   roomId = Math.random().toString(36).substring(2, 8);
   $('room-code-label').textContent = `SALA: ${roomId.toUpperCase()}`;
 
-  // Criar URL completa para o smartphone
-  const baseUrl = window.location.origin;
-  const cameraUrl = `${baseUrl}/camera.html#room=${roomId}`;
+  let hostIp = window.location.hostname;
+  let port = window.location.port || '3000';
+  let proto = window.location.protocol;
+
+  // Se estiver acessando por localhost no Mac, busca o IP real da rede local Wi-Fi
+  if (hostIp === 'localhost' || hostIp === '127.0.0.1') {
+    try {
+      const res = await fetch('/api/info');
+      if (res.ok) {
+        const info = await res.json();
+        if (info.localIp && info.localIp !== 'localhost') {
+          hostIp = info.localIp;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Criar URL completa acessível na rede Wi-Fi pelo smartphone
+  const cameraUrl = `${proto}//${hostIp}:${port}/camera.html#room=${roomId}&host=${hostIp}`;
   console.log('[main] URL da Câmera para QR Code:', cameraUrl);
 
   // Desenhar QR Code no container do modal
@@ -174,11 +189,6 @@ function initP2PRoom() {
     updateSensorHud(renderer ? renderer.fps : 0);
     $('p2p-status-sub').textContent = 'Escanear QR Code com a câmera';
     $('p2p-status-sub').style.color = 'var(--label-secondary)';
-    
-    // PiP status update
-    $('pip-dot').className = 'pip-dot';
-    $('pip-empty').style.display = 'flex';
-    $('pip-empty').textContent = 'Smartphone desconectado';
     showToast('Smartphone desconectado', 'info');
   };
 
@@ -194,19 +204,6 @@ function initP2PRoom() {
     if (renderer && (!motionTimeline || !motionTimeline.isPlaying)) {
       renderer.applyBlendShapes(shapes, rot);
     }
-  };
-
-  // Preview de vídeo do Smartphone via WebRTC PiP
-  p2pClient.onPeerStreamCallback = (stream) => {
-    console.log('[main] Stream de vídeo recebido do smartphone');
-    const pipVideo = /** @type {HTMLVideoElement} */ ($('pip-video'));
-    pipVideo.srcObject = stream;
-    pipVideo.play().catch(() => {});
-    $('pip-dot').className = 'pip-dot active';
-    $('pip-empty').style.display = 'none';
-    $('chk-pip-preview').checked = true;
-    $('pip-container').classList.remove('hidden');
-    showToast('Preview da câmera do smartphone ativo em PiP', 'success');
   };
 
   p2pClient.connect();
@@ -417,101 +414,34 @@ function setupBackground() {
   });
 }
 
-/* ─── Picture-in-Picture Preview (Draggable) ─────────────────────────────── */
-
-function setupPiP() {
-  const pip = $('pip-container');
-  const chk = /** @type {HTMLInputElement} */ ($('chk-pip-preview'));
-  const btnClose = $('btn-close-pip');
-  const pipHeader = pip.querySelector('.pip-header');
-
-  chk.addEventListener('change', () => {
-    if (chk.checked) {
-      pip.classList.remove('hidden');
-    } else {
-      pip.classList.add('hidden');
-    }
-  });
-
-  btnClose.addEventListener('click', (e) => {
-    e.stopPropagation();
-    pip.classList.add('hidden');
-    chk.checked = false;
-  });
-
-  // Arrastar e soltar (Drag & Drop) da janela PiP
-  let isDragging = false;
-  let startX = 0;
-  let startY = 0;
-  let initialLeft = 0;
-  let initialTop = 0;
-
-  const onPointerDown = (e) => {
-    if (e.target.closest('#btn-close-pip')) return;
-
-    isDragging = true;
-    pip.classList.add('dragging');
-
-    const rect = pip.getBoundingClientRect();
-    startX = e.clientX;
-    startY = e.clientY;
-    initialLeft = rect.left;
-    initialTop = rect.top;
-
-    pip.style.right = 'auto';
-    pip.style.bottom = 'auto';
-    pip.style.left = `${initialLeft}px`;
-    pip.style.top = `${initialTop}px`;
-
-    pip.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  };
-
-  const onPointerMove = (e) => {
-    if (!isDragging) return;
-
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-
-    const newLeft = Math.max(10, Math.min(window.innerWidth - pip.offsetWidth - 10, initialLeft + dx));
-    const newTop = Math.max(10, Math.min(window.innerHeight - pip.offsetHeight - 10, initialTop + dy));
-
-    pip.style.left = `${newLeft}px`;
-    pip.style.top = `${newTop}px`;
-  };
-
-  const onPointerUp = (e) => {
-    if (!isDragging) return;
-    isDragging = false;
-    pip.classList.remove('dragging');
-    try {
-      pip.releasePointerCapture(e.pointerId);
-    } catch (_) {}
-  };
-
-  if (pipHeader) {
-    pipHeader.addEventListener('pointerdown', onPointerDown);
-    pipHeader.addEventListener('pointermove', onPointerMove);
-    pipHeader.addEventListener('pointerup', onPointerUp);
-    pipHeader.addEventListener('pointercancel', onPointerUp);
-  } else {
-    pip.addEventListener('pointerdown', onPointerDown);
-    pip.addEventListener('pointermove', onPointerMove);
-    pip.addEventListener('pointerup', onPointerUp);
-    pip.addEventListener('pointercancel', onPointerUp);
-  }
-}
-
 /* ─── Device Enumeration (Camera & Microphone) ────────────────────────────── */
+
+let mediaDevicesListenersBound = false;
 
 async function setupMediaDevices() {
   const selectCam = /** @type {HTMLSelectElement} */ ($('select-camera'));
   const selectMic = /** @type {HTMLSelectElement} */ ($('select-mic'));
 
+  // Request temporary stream to unlock real hardware labels in Safari / Chrome if not yet granted
+  let tempStream = null;
   try {
-    // Solicita uma permissão leve para obter rótulos reais dos dispositivos
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    }
+  } catch (_) {
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
+    } catch (_) {}
+  }
+
+  try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    
+    if (tempStream) {
+      tempStream.getTracks().forEach((t) => t.stop());
+    }
+
     // 1. Câmeras
     const videoDevices = devices.filter((d) => d.kind === 'videoinput');
     selectCam.innerHTML = '';
@@ -524,17 +454,12 @@ async function setupMediaDevices() {
         opt.textContent = dev.label || `Câmera ${idx + 1}`;
         selectCam.appendChild(opt);
       });
-      selectedCameraDeviceId = videoDevices[0].deviceId;
-    }
-
-    selectCam.addEventListener('change', async (e) => {
-      selectedCameraDeviceId = e.target.value;
-      if (localTracking) {
-        stopLocalCamera();
-        await startLocalCamera();
-        showToast('Câmera alternada com sucesso', 'info');
+      if (!selectedCameraDeviceId || !videoDevices.some((d) => d.deviceId === selectedCameraDeviceId)) {
+        selectedCameraDeviceId = videoDevices[0].deviceId;
+      } else {
+        selectCam.value = selectedCameraDeviceId;
       }
-    });
+    }
 
     // 2. Microfones
     const audioDevices = devices.filter((d) => d.kind === 'audioinput');
@@ -548,16 +473,41 @@ async function setupMediaDevices() {
         opt.textContent = dev.label || `Microfone ${idx + 1}`;
         selectMic.appendChild(opt);
       });
-      selectedAudioDeviceId = audioDevices[0].deviceId;
+      if (!selectedAudioDeviceId || !audioDevices.some((d) => d.deviceId === selectedAudioDeviceId)) {
+        selectedAudioDeviceId = audioDevices[0].deviceId;
+      } else {
+        selectMic.value = selectedAudioDeviceId;
+      }
     }
 
-    selectMic.addEventListener('change', (e) => {
-      selectedAudioDeviceId = e.target.value;
-      showToast('Microfone selecionado para gravação', 'info');
-    });
+    if (!mediaDevicesListenersBound) {
+      mediaDevicesListenersBound = true;
 
+      selectCam.addEventListener('change', async (e) => {
+        selectedCameraDeviceId = e.target.value;
+        if (localTracking) {
+          stopLocalCamera();
+          await startLocalCamera();
+          showToast('Câmera alternada com sucesso', 'info');
+        }
+      });
+
+      selectMic.addEventListener('change', (e) => {
+        selectedAudioDeviceId = e.target.value;
+        showToast('Microfone selecionado para gravação', 'info');
+      });
+
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+        navigator.mediaDevices.addEventListener('devicechange', () => {
+          setupMediaDevices();
+        });
+      }
+    }
   } catch (err) {
     console.warn('[main] Não foi possível enumerar dispositivos de mídia:', err);
+    if (tempStream) {
+      tempStream.getTracks().forEach((t) => t.stop());
+    }
   }
 }
 
@@ -692,9 +642,9 @@ async function toggleLocalCamera() {
 
   if (localTracking) {
     stopLocalCamera();
-    badge.textContent = 'Ativar';
+    badge.textContent = 'Ativar Câmera do PC';
     badge.style.color = 'var(--label-secondary)';
-    title.textContent = 'Câmera deste Mac';
+    title.textContent = 'Câmera do PC';
     if (sub) sub.textContent = 'Rastreamento neste computador';
     updateSensorHud(renderer ? renderer.fps : 0);
     showToast('Câmera desativada', 'info');
@@ -702,9 +652,9 @@ async function toggleLocalCamera() {
     badge.textContent = 'Iniciando...';
     try {
       await startLocalCamera();
-      badge.textContent = 'Ativa ✓';
+      badge.textContent = 'Ativa';
       badge.style.color = 'var(--sys-green)';
-      title.textContent = 'Câmera (Ativa)';
+      title.textContent = 'Câmera do PC (Ativa)';
       if (sub) sub.textContent = 'Rastreamento facial ativo';
       updateSensorHud(renderer ? renderer.fps : 0);
       showToast('Câmera ativada com sucesso', 'success');

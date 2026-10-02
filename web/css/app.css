@@ -126,109 +126,6 @@ html, body {
   transform: scale(0.96);
 }
 
-/* ── Picture-in-Picture Smartphone Camera Preview (Canto Superior Direito) ── */
-.pip-window {
-  position: absolute;
-  top: 68px;
-  right: 20px;
-  left: auto;
-  bottom: auto;
-  width: 190px;
-  height: 250px;
-  background: rgba(18, 18, 22, 0.85);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border: 0.5px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  z-index: 30;
-  touch-action: none;
-  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.pip-window.dragging {
-  opacity: 0.92;
-  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.8);
-  transition: none;
-}
-.pip-window.hidden {
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.92) translateY(12px);
-}
-.pip-header {
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.4);
-  border-bottom: 0.5px solid var(--border-divider);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--label-secondary);
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.pip-header:active {
-  cursor: grabbing;
-}
-.pip-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.pip-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--sys-gray);
-  transition: background 0.2s ease;
-}
-.pip-dot.active {
-  background: var(--sys-green);
-  box-shadow: 0 0 6px var(--sys-green);
-}
-.pip-close {
-  background: none;
-  border: none;
-  color: var(--label-tertiary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-}
-.pip-close:hover {
-  color: #fff;
-}
-.pip-body {
-  flex: 1;
-  position: relative;
-  background: #000;
-  overflow: hidden;
-}
-#pip-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
-}
-.pip-empty {
-  position: absolute;
-  inset: 0;
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  font-size: 11px;
-  color: var(--label-tertiary);
-  background: #0d0d12;
-}
-
 /* ── HUD Status Badge on Canvas (Canto Superior Direito) ── */
 .canvas-hud {
   position: absolute;
@@ -1618,8 +1515,7 @@ html, body {
 /* ── UI Interaction Blocker during model load ── */
 body.app-loading-active .drawer-trigger-btn,
 body.app-loading-active .sidebar-drawer,
-body.app-loading-active .timeline-dock,
-body.app-loading-active .pip-window {
+body.app-loading-active .timeline-dock {
   pointer-events: none !important;
   opacity: 0.65;
   filter: grayscale(0.2);

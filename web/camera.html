@@ -201,8 +201,14 @@
   import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
   import { P2PClient } from '/js/p2p-client.js';
 
-  // Obter Sala a partir do Hash (ex: /camera.html#room=xyz)
-  const roomHash = window.location.hash ? window.location.hash.replace('#room=', '').replace('#', '') : 'default-room';
+  // Obter Sala a partir do Hash ou Query Parameters (ex: /camera.html#room=xyz&host=192.168.1.4)
+  const rawHash = (window.location.hash || '').replace('#', '');
+  const hashParams = new URLSearchParams(rawHash.includes('?') ? rawHash.split('?')[1] : rawHash);
+  const searchParams = new URLSearchParams(window.location.search);
+  let roomHash = hashParams.get('room') || searchParams.get('room');
+  if (!roomHash) {
+    roomHash = rawHash.split('&')[0].replace('room=', '') || 'default-room';
+  }
   
   const video = document.getElementById('webcam');
   const loaderOverlay = document.getElementById('loader-overlay');
@@ -248,23 +254,17 @@
       loaderSub.textContent = 'Toque em Permitir no Safari';
       const camStream = await setupCamera();
 
-      // 2. Inicializar P2P com envio garantido do stream
+      // 2. Inicializar P2P / WebSocket
       p2pClient = new P2PClient(roomHash, false);
       p2pClient.onPeerJoinCallback = () => {
         p2pDot.className = 'pill-dot connected';
         p2pLabel.textContent = 'Conectado ✓';
-        if (camStream) {
-          p2pClient.sendStream(camStream);
-        }
       };
       p2pClient.onPeerLeaveCallback = () => {
         p2pDot.className = 'pill-dot';
         p2pLabel.textContent = 'Desconectado';
       };
       p2pClient.connect();
-      if (camStream) {
-        p2pClient.sendStream(camStream);
-      }
 
       // 3. Inicializar MediaPipe
       loaderTitle.textContent = 'Carregando IA Facial...';

@@ -51,6 +51,33 @@ app.use(express.static(WEB_DIR, {
   }
 }));
 
+// Helper to discover the host machine's Wi-Fi / LAN IP address
+function getLocalIpAddress() {
+  const os = require('os');
+  const ifaces = os.networkInterfaces();
+  for (const dev in ifaces) {
+    for (const details of ifaces[dev]) {
+      if (details.family === 'IPv4' && !details.internal && !details.address.startsWith('169.254')) {
+        return details.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+// API endpoint for automatic local Wi-Fi IP discovery (QR Code pairing)
+app.get('/api/info', (_req, res) => {
+  const localIp = getLocalIpAddress();
+  res.json({
+    localIp,
+    httpPort: HTTP_PORT,
+    httpsPort: HTTPS_PORT,
+    wsPort: WS_PORT,
+    cameraUrl: `http://${localIp}:${HTTP_PORT}/camera.html`,
+    cameraHttpsUrl: `https://${localIp}:${HTTPS_PORT}/camera.html`,
+  });
+});
+
 // Catch-all → index.html (SPA support)
 app.get('*', (_req, res) => {
   res.sendFile(path.join(WEB_DIR, 'index.html'));

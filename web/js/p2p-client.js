@@ -12,10 +12,13 @@ import { joinRoom } from './trystero-nostr.js';
 
 const APP_ID = 'facetomodel-p2p-v1';
 
-// Top tier high-uptime public relays
+// Top tier high-uptime public relays with fallback
 const RELAY_URLS = [
   'wss://relay.damus.io',
   'wss://relay.nostr.band',
+  'wss://nos.lol',
+  'wss://nostr.mom',
+  'wss://relay.primal.net',
 ];
 
 export class P2PClient {
@@ -117,17 +120,27 @@ export class P2PClient {
 
   _connectLocalWebSocket() {
     try {
-      const hostname = window.location.hostname || 'localhost';
+      let host = window.location.hostname || 'localhost';
+
+      // Verifica se o host foi passado explicitamente na URL (ex: #room=xyz&host=192.168.1.4)
+      const rawHash = (window.location.hash || '').replace('#', '');
+      const hashParams = new URLSearchParams(rawHash.includes('?') ? rawHash.split('?')[1] : rawHash);
+      const searchParams = new URLSearchParams(window.location.search);
+      const hostParam = hashParams.get('host') || searchParams.get('host');
+      if (hostParam && hostParam !== 'localhost') {
+        host = hostParam;
+      }
+
       const isSecure = window.location.protocol === 'https:';
       const wsProto = isSecure ? 'wss:' : 'ws:';
       const wsPort = isSecure ? (window.location.port || '3443') : '8080';
       const role = this.isHost ? 'browser' : 'iphone';
-      const wsUrl = `${wsProto}//${hostname}:${wsPort}?role=${role}`;
+      const wsUrl = `${wsProto}//${host}:${wsPort}?role=${role}`;
 
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
-        console.log(`[P2P/LAN] WebSocket Local conectado com sucesso (${role})`);
+        console.log(`[P2P/LAN] WebSocket Local conectado com sucesso (${role}) em ${wsUrl}`);
         this._isLocalWsConnected = true;
         if (this.onPeerJoinCallback) this.onPeerJoinCallback('local-lan');
       };
@@ -146,7 +159,6 @@ export class P2PClient {
       };
 
       ws.onerror = () => {
-        // Silently fallback to WebRTC if local WS is unavailable
         this._isLocalWsConnected = false;
       };
 
