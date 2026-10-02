@@ -49,6 +49,31 @@
       </div>
     </div>
 
+    <!-- Overlay de Carregamento de Modelo 3D com Bloqueio de Ações -->
+    <div class="model-loading-overlay hidden" id="model-loading-overlay">
+      <div class="loading-glass-card">
+        <div class="loading-spinner">
+          <svg class="svg-spinner" viewBox="0 0 50 50">
+            <circle class="spinner-track" cx="25" cy="25" r="20" fill="none" stroke-width="3.5"></circle>
+            <circle class="spinner-circle" id="loading-spinner-circle" cx="25" cy="25" r="20" fill="none" stroke-width="3.5"></circle>
+          </svg>
+        </div>
+        <div class="loading-info">
+          <h3 id="loading-model-title">Carregando Modelo 3D</h3>
+          <p id="loading-model-status">Transferindo dados...</p>
+        </div>
+        <div class="loading-progress-container">
+          <div class="loading-progress-track">
+            <div class="loading-progress-bar" id="loading-progress-bar"></div>
+          </div>
+          <div class="loading-progress-meta">
+            <span id="loading-progress-bytes">0 MB / 0 MB</span>
+            <span id="loading-progress-pct">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Botão Flutuante de Controle do Drawer (Canto Superior Esquerdo) -->
     <button class="drawer-trigger-btn" id="btn-toggle-drawer" aria-label="Abrir Ajustes">
       <svg class="svg-icon" viewBox="0 0 24 24">

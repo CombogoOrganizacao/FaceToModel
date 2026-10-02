@@ -24,6 +24,7 @@ import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
+import { modelCache } from './model-cache.js';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 
@@ -153,14 +154,15 @@ export class Renderer {
 
   /**
    * Load a 3D model (.glb, .gltf, .fbx, .obj) and add it to the scene.
-   * Supports texture maps and material files automatically.
+   * Supports texture maps, material files, and high-performance IndexedDB binary caching.
    *
    * @param {string} url - URL or object URL of the model file
    * @param {string} [filename] - Optional filename to determine format extension
    * @param {Record<string, string>} [assetMap] - Optional map of auxiliary files (textures, .mtl)
+   * @param {function({ loaded: number, total: number, percent: number }): void} [onProgress] - Progress callback
    * @returns {Promise<THREE.Object3D>}
    */
-  async loadModel(url, filename = '', assetMap = {}) {
+  async loadModel(url, filename = '', assetMap = {}, onProgress = null) {
     if (this._model) {
       this._scene.remove(this._model);
       this._model = null;
@@ -213,9 +215,20 @@ export class Renderer {
         model = await objLoader.loadAsync(url);
       }
     } else {
-      // Standard GLTF / GLB loader with KTX2 & DRACO
-      const gltf = await this._loader.loadAsync(url);
-      model = gltf.scene;
+      // Standard GLTF / GLB loader with KTX2, DRACO and IndexedDB Binary Cache
+      if (url.startsWith('blob:') || url.startsWith('data:')) {
+        const gltf = await this._loader.loadAsync(url, onProgress ? (xhr) => {
+          if (xhr.lengthComputable) {
+            onProgress({ loaded: xhr.loaded, total: xhr.total, percent: Math.round((xhr.loaded / xhr.total) * 100) });
+          }
+        } : undefined);
+        model = gltf.scene;
+      } else {
+        // Stream / load from IndexedDB cache with progress
+        const buffer = await modelCache.fetchWithCache(url, onProgress);
+        const gltf = await this._loader.parseAsync(buffer, '');
+        model = gltf.scene;
+      }
     }
 
     // Ensure all materials are double-sided, properly sorted for alpha blending, and skin/eyes/hair rendered with Unreal Engine realistic PBR

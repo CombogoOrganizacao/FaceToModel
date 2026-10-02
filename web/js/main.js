@@ -780,14 +780,15 @@ function runLocalLoop() {
         blendShapesMap[shape.categoryName] = shape.score;
       }
 
-      // Rotação 3DoF
+      // Rotação 3DoF calibrada 1:1
       let rotation = null;
       if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
         const m = results.facialTransformationMatrixes[0].data;
         const pitch = Math.atan2(m[6], m[10]);
         const yaw   = Math.atan2(-m[2], Math.sqrt(m[6] * m[6] + m[10] * m[10]));
         const roll  = Math.atan2(m[1], m[0]);
-        rotation = { pitch: -pitch * 0.75, yaw: yaw * 0.75, roll: -roll * 0.75 };
+        // Pitch calibrado: inclinar para baixo olha para baixo, para cima olha para cima
+        rotation = { pitch: pitch * 0.85, yaw: yaw * 0.85, roll: -roll * 0.85 };
       }
 
       if (motionTimeline && motionTimeline.isRecording && !motionTimeline.isPaused) {
@@ -1177,7 +1178,7 @@ function startInspectorLoop() {
   }, 100);
 }
 
-/* ─── Model Loader (Resilient Background Load) ────────────────────────────── */
+/* ─── Model Loader (Resilient Progressive Load with UI Blocker) ────────── */
 
 async function loadModel(url, filename = '', assetMap = {}) {
   const displayName = (filename || url.split('/').pop() || 'model.glb').split('?')[0];
@@ -1192,8 +1193,44 @@ async function loadModel(url, filename = '', assetMap = {}) {
     }
   }
 
+  // 1. Ativar Overlay Visual de Carregamento na Cena 3D e Bloquear Interações
+  const overlay = $('model-loading-overlay');
+  const titleEl = $('loading-model-title');
+  const statusEl = $('loading-model-status');
+  const barEl = $('loading-progress-bar');
+  const pctEl = $('loading-progress-pct');
+  const bytesEl = $('loading-progress-bytes');
+
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    document.body.classList.add('app-loading-active');
+    if (titleEl) titleEl.textContent = displayName;
+    if (statusEl) statusEl.textContent = 'Transferindo dados e texturas...';
+    if (barEl) barEl.style.width = '0%';
+    if (pctEl) pctEl.textContent = '0%';
+    if (bytesEl) bytesEl.textContent = 'Iniciando...';
+  }
+
+  const onProgress = ({ loaded, total, percent }) => {
+    if (percent >= 0) {
+      if (barEl) barEl.style.width = `${percent}%`;
+      if (pctEl) pctEl.textContent = `${percent}%`;
+      if (bytesEl && total > 0) {
+        const loadedMb = (loaded / (1024 * 1024)).toFixed(1);
+        const totalMb = (total / (1024 * 1024)).toFixed(1);
+        bytesEl.textContent = `${loadedMb} MB / ${totalMb} MB`;
+      }
+      if (percent >= 100 && statusEl) {
+        statusEl.textContent = 'Descompactando malhas e compilando shaders...';
+      }
+    } else if (bytesEl) {
+      const loadedMb = (loaded / (1024 * 1024)).toFixed(1);
+      bytesEl.textContent = `${loadedMb} MB transferidos`;
+    }
+  };
+
   try {
-    await renderer.loadModel(url, displayName, assetMap);
+    await renderer.loadModel(url, displayName, assetMap, onProgress);
     const coverage = renderer.blendshapeCoverage;
     $('model-name').textContent = displayName;
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;
@@ -1203,5 +1240,11 @@ async function loadModel(url, filename = '', assetMap = {}) {
     $('model-name').textContent = displayName;
     $('model-coverage').textContent = 'Pronto para uso';
     showToast(`Erro ao carregar modelo: ${err.message}`, 'error');
+  } finally {
+    // 2. Desativar Overlay e Liberar Interações na UI
+    if (overlay) {
+      overlay.classList.add('hidden');
+      document.body.classList.remove('app-loading-active');
+    }
   }
 }

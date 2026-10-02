@@ -387,14 +387,15 @@
           blendShapesMap[shape.categoryName] = shape.score;
         }
 
-        // Extrair Rotação 3DoF da Cabeça (Pitch, Yaw, Roll)
+        // Extrair Rotação 3DoF da Cabeça (Pitch, Yaw, Roll calibrados 1:1)
         let rotation = null;
         if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
           const m = results.facialTransformationMatrixes[0].data;
           const pitch = Math.atan2(m[6], m[10]);
           const yaw   = Math.atan2(-m[2], Math.sqrt(m[6] * m[6] + m[10] * m[10]));
           const roll  = Math.atan2(m[1], m[0]);
-          rotation = { pitch: -pitch * 0.75, yaw: yaw * 0.75, roll: -roll * 0.75 };
+          // Pitch calibrado: mover rosto para baixo olha para baixo, para cima olha para cima
+          rotation = { pitch: pitch * 0.85, yaw: yaw * 0.85, roll: -roll * 0.85 };
         }
 
         // Transmissão P2P instantânea para o Mac
