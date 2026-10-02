@@ -162,7 +162,15 @@
           </svg>
         </button>
 
-        <button class="tl-action-btn primary" id="btn-tl-export" title="Exportar Trecho Selecionado em MP4" aria-label="Exportar">
+        <button class="tl-action-btn secondary" id="btn-tl-export-glb" title="Exportar Animação no Modelo 3D (.glb) para Unity, Unreal, Blender, Godot" aria-label="Exportar Modelo 3D">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <button class="tl-action-btn primary" id="btn-tl-export" title="Exportar Trecho Selecionado em MP4" aria-label="Exportar Vídeo">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -452,6 +460,27 @@
               </div>
             </div>
             <span id="local-cam-badge" style="font-size: 12px; color: var(--label-secondary);">Ativar Câmera do PC</span>
+          </div>
+
+          <!-- Otimização para Óculos (Glasses Mode) -->
+          <div class="card-row" style="margin-top: 8px;">
+            <div class="row-leading">
+              <div class="row-icon-box purple">
+                <svg class="svg-icon" viewBox="0 0 24 24">
+                  <circle cx="6" cy="14" r="4" stroke="currentColor" stroke-width="1.75" fill="none"/>
+                  <circle cx="18" cy="14" r="4" stroke="currentColor" stroke-width="1.75" fill="none"/>
+                  <path d="M10 14h4M2 14h0M22 14h0M6 10L4 6M18 10l2-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <div class="row-text">
+                <span class="row-title">Modo Óculos</span>
+                <span class="row-sub">Filtro anti-reflexo e armação</span>
+              </div>
+            </div>
+            <label class="ios-switch">
+              <input type="checkbox" id="chk-glasses-mode">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
           </div>
 
           <!-- Seleção de Dispositivos (Câmera e Microfone) -->

@@ -17,6 +17,8 @@
 import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
 import { MotionTimeline } from './motion-timeline.js';
+import { GlassesFilter } from './glasses-filter.js';
+import { exportModelToGLB, buildAnimationClip } from './glb-exporter.js';
 
 /* ─── DOM Helpers ─────────────────────────────────────────────────────────── */
 
@@ -49,6 +51,8 @@ let recorder = null;
 let motionTimeline = null;
 let p2pClient = null;
 let roomId = null;
+let currentModelFilename = 'facecap.glb';
+const glassesFilter = new GlassesFilter();
 
 // Local camera & media state
 let localTracking = false;
@@ -194,8 +198,12 @@ async function initP2PRoom() {
 
   // Suporte a dados avançados { blendShapes, rotation }
   p2pClient.onBlendshapesReceived = (data) => {
-    const shapes = (data && data.blendShapes) ? data.blendShapes : data;
+    let shapes = (data && data.blendShapes) ? data.blendShapes : data;
     const rot = (data && data.rotation) ? data.rotation : null;
+
+    if (glassesFilter.enabled && shapes) {
+      shapes = glassesFilter.process(shapes);
+    }
 
     if (motionTimeline && motionTimeline.isRecording && !motionTimeline.isPaused) {
       motionTimeline.addFrame(shapes, rot);
@@ -542,6 +550,15 @@ function setupUI() {
     });
   }
 
+  // Toggle de Modo Óculos (Glasses Optimization)
+  const chkGlasses = /** @type {HTMLInputElement} */ ($('chk-glasses-mode'));
+  if (chkGlasses) {
+    chkGlasses.addEventListener('change', () => {
+      glassesFilter.setEnabled(chkGlasses.checked);
+      showToast(chkGlasses.checked ? 'Modo Óculos ativado (filtro anti-reflexo e estabilização)' : 'Modo Óculos desativado', 'info');
+    });
+  }
+
   // Redefinir Câmera
   $('btn-reset-view').addEventListener('click', () => {
     if (renderer) renderer.resetCamera();
@@ -730,6 +747,8 @@ function runLocalLoop() {
         blendShapesMap[shape.categoryName] = shape.score;
       }
 
+      const finalShapes = glassesFilter.process(blendShapesMap);
+
       // Rotação 3DoF calibrada 1:1
       let rotation = null;
       if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
@@ -742,11 +761,11 @@ function runLocalLoop() {
       }
 
       if (motionTimeline && motionTimeline.isRecording && !motionTimeline.isPaused) {
-        motionTimeline.addFrame(blendShapesMap, rotation);
+        motionTimeline.addFrame(finalShapes, rotation);
       }
 
       if (renderer && (!motionTimeline || !motionTimeline.isPlaying)) {
-        renderer.applyBlendShapes(blendShapesMap, rotation);
+        renderer.applyBlendShapes(finalShapes, rotation);
       }
     }
   }
@@ -879,6 +898,60 @@ function setupTimeline() {
     motionTimeline.clear();
     showToast('Timeline limpa. Pronto para novo take.', 'info');
   });
+
+  // Botão Exportar Animação no Modelo 3D (.GLB) para Unity, Unreal, Blender, Godot
+  const btnExportGLB = $('btn-tl-export-glb');
+  if (btnExportGLB) {
+    btnExportGLB.addEventListener('click', async () => {
+      if (!motionTimeline || motionTimeline.frames.length < 2) {
+        showToast('Grave movimentos na timeline antes de exportar o modelo 3D.', 'info');
+        return;
+      }
+      if (!renderer || !renderer.getModel()) {
+        showToast('Nenhum modelo 3D carregado para exportação.', 'error');
+        return;
+      }
+
+      showToast('Empacotando animação 3D no modelo (.glb)...', 'info');
+
+      try {
+        const model = renderer.getInnerModel();
+        const modelMap = renderer.getModelMap();
+        const headBone = renderer.getHeadBone();
+        const neckBone = renderer.getNeckBone();
+
+        const animationClip = buildAnimationClip({
+          frames: motionTimeline.frames,
+          trimIn: motionTimeline.trimIn,
+          trimOut: motionTimeline.trimOut,
+          model: model,
+          modelMap: modelMap,
+          headBone: headBone,
+          neckBone: neckBone,
+          clipName: 'FaceToModel_MotionTake'
+        });
+
+        if (!animationClip) {
+          showToast('Não foi possível gerar faixas de animação da gravação.', 'error');
+          return;
+        }
+
+        const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'modelo_3d';
+        const filename = `${baseName}_animado.glb`;
+
+        await exportModelToGLB({
+          model: model,
+          animationClip: animationClip,
+          filename: filename
+        });
+
+        showToast(`Animação 3D salva no modelo: ${filename}!`, 'success');
+      } catch (err) {
+        console.error('[main] Erro na exportação do modelo GLB:', err);
+        showToast('Erro ao exportar modelo 3D: ' + err.message, 'error');
+      }
+    });
+  }
 
   // Botão Exportar MP4 do Trecho Recortado em 1080p 60 FPS
   btnExport.addEventListener('click', async () => {
@@ -1181,6 +1254,7 @@ async function loadModel(url, filename = '', assetMap = {}) {
 
   try {
     await renderer.loadModel(url, displayName, assetMap, onProgress);
+    currentModelFilename = displayName;
     const coverage = renderer.blendshapeCoverage;
     $('model-name').textContent = displayName;
     $('model-coverage').textContent = `${coverage} / 52 blendshapes mapeados`;

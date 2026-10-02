@@ -126,6 +126,8 @@ export class Renderer {
     /* ── Model state ── */
     this._model = null;
     this._headBone = null;
+    this._neckBone = null;
+    this._isFullBody = false;
     this._modelMap = {};
     this.blendshapeCoverage = 0;
     this.fps = 0;
@@ -422,6 +424,41 @@ export class Renderer {
     const { map, coverage } = buildModelMap(model);
     this._modelMap          = map;
     this.blendshapeCoverage = coverage;
+
+    // Discover skeletal head and neck bones (for humanoid rigs, MetaHuman, Mixamo, VRoid/VRM, ReadyPlayerMe)
+    let headBone = null;
+    let neckBone = null;
+
+    const isExcluded = (n) => /(hair|forehead|headtop|headend|eye|ear|jaw|mouth|teeth|tongue|lip|cheek|eyebrow|12ipv|neckback|neckb|necka|clavicle|skin|facial_c_)/i.test(n);
+    const headRegex = /(^|[_\-:])head(_[0-9]+)?($|[_\-:0-9])/i;
+    const neckRegex = /(^|[_\-:])neck(_[0-9]+)?($|[_\-:0-9])/i;
+
+    model.traverse((node) => {
+      if (node.isBone) {
+        const name = node.name || '';
+        if (!headBone && headRegex.test(name) && !isExcluded(name)) {
+          headBone = node;
+        }
+        if (!neckBone && neckRegex.test(name) && !isExcluded(name)) {
+          neckBone = node;
+        }
+      }
+    });
+
+    if (headBone) {
+      headBone.userData.restEuler = headBone.rotation.clone();
+      headBone.userData.restQuaternion = headBone.quaternion.clone();
+      console.log(`[Renderer] Osso de Cabeça detectado: "${headBone.name}" (O corpo permanecerá 100% fixo)`);
+    }
+    if (neckBone) {
+      neckBone.userData.restEuler = neckBone.rotation.clone();
+      neckBone.userData.restQuaternion = neckBone.quaternion.clone();
+      console.log(`[Renderer] Osso de Pescoço detectado: "${neckBone.name}"`);
+    }
+
+    this._headBone = headBone;
+    this._neckBone = neckBone;
+    this._isFullBody = isFullBody;
 
     // Cache original materials for non-destructive shading & texture toggles
     model.traverse((node) => {
@@ -825,12 +862,49 @@ export class Renderer {
       const rx = rotation.pitch || 0;
       const ry = rotation.yaw || 0;
       const rz = rotation.roll || 0;
-      if (this._model) {
-        this._model.rotation.set(rx, ry, rz);
-      }
+      this._applyHeadRotation(rx, ry, rz);
     }
     this._controls.update();
     this._renderer.render(this._scene, this._camera);
+  }
+
+  /**
+   * Applies head rotation. If the model has a skeletal head bone (e.g. full-body avatars, MetaHumans, VRoid, Mixamo),
+   * only the head (and neck) bones rotate while keeping the torso, arms, legs and entire body stationary.
+   * If the model is a standalone head bust with no bones, rotates the bust pivot.
+   * @param {number} rx - Pitch
+   * @param {number} ry - Yaw
+   * @param {number} rz - Roll
+   */
+  _applyHeadRotation(rx, ry, rz) {
+    if (!this._model) return;
+
+    if (this._headBone) {
+      // Keep root model / body completely fixed and stationary
+      this._model.rotation.set(0, 0, 0);
+
+      if (this._neckBone) {
+        // Natural organic distribution: 25% on neck, 75% on head
+        const neckRot = new THREE.Euler(rx * 0.25, ry * 0.25, rz * 0.25, 'YXZ');
+        const neckDeltaQ = new THREE.Quaternion().setFromEuler(neckRot);
+        this._neckBone.quaternion.copy(this._neckBone.userData.restQuaternion).multiply(neckDeltaQ);
+
+        const headRot = new THREE.Euler(rx * 0.75, ry * 0.75, rz * 0.75, 'YXZ');
+        const headDeltaQ = new THREE.Quaternion().setFromEuler(headRot);
+        this._headBone.quaternion.copy(this._headBone.userData.restQuaternion).multiply(headDeltaQ);
+      } else {
+        // 100% on head bone
+        const headRot = new THREE.Euler(rx, ry, rz, 'YXZ');
+        const headDeltaQ = new THREE.Quaternion().setFromEuler(headRot);
+        this._headBone.quaternion.copy(this._headBone.userData.restQuaternion).multiply(headDeltaQ);
+      }
+    } else if (!this._isFullBody) {
+      // Standalone head/face mesh without skeletal bones: rotate the pivot
+      this._model.rotation.set(rx, ry, rz);
+    } else {
+      // Full body without bones: keep body fixed
+      this._model.rotation.set(0, 0, 0);
+    }
   }
 
   /**
@@ -860,6 +934,26 @@ export class Renderer {
 
   getCanvas() {
     return this.canvas;
+  }
+
+  getModel() {
+    return this._model;
+  }
+
+  getInnerModel() {
+    return this._innerModel || this._model;
+  }
+
+  getModelMap() {
+    return this._modelMap;
+  }
+
+  getHeadBone() {
+    return this._headBone;
+  }
+
+  getNeckBone() {
+    return this._neckBone;
   }
 
   startLoop() {
@@ -918,9 +1012,7 @@ export class Renderer {
     this._currentRotation.y += (this._targetRotation.y - this._currentRotation.y) * rotAlpha;
     this._currentRotation.z += (this._targetRotation.z - this._currentRotation.z) * rotAlpha;
 
-    if (this._model) {
-      this._model.rotation.set(this._currentRotation.x, this._currentRotation.y, this._currentRotation.z);
-    }
+    this._applyHeadRotation(this._currentRotation.x, this._currentRotation.y, this._currentRotation.z);
 
     this._fpsFrames++;
     const now     = performance.now();

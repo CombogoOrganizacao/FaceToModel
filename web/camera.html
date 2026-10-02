@@ -176,6 +176,15 @@
       <span id="p2p-label">Conectando...</span>
     </div>
     
+    <button class="pill-badge" id="btn-toggle-glasses" style="background: rgba(255,255,255,0.08); border:none; color: rgba(235,235,245,0.7); cursor:pointer; gap:5px;" title="Otimização para Óculos">
+      <svg class="svg-icon" style="width:14px; height:14px;" viewBox="0 0 24 24">
+        <circle cx="6" cy="14" r="4" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <circle cx="18" cy="14" r="4" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <path d="M10 14h4M2 14h0M22 14h0M6 10L4 6M18 10l2-4" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" fill="none"/>
+      </svg>
+      <span id="glasses-label">Óculos: Off</span>
+    </button>
+
     <div class="pill-badge" style="font-family: var(--font-mono); font-size: 11px;">
       <span id="fps-label">60 FPS</span>
     </div>
@@ -200,6 +209,7 @@
 <script type="module">
   import { FilesetResolver, FaceLandmarker } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
   import { P2PClient } from '/js/p2p-client.js';
+  import { GlassesFilter } from '/js/glasses-filter.js';
 
   // Obter Sala a partir do Hash ou Query Parameters (ex: /camera.html#room=xyz&host=192.168.1.4)
   const rawHash = (window.location.hash || '').replace('#', '');
@@ -219,6 +229,20 @@
   const fpsLabel = document.getElementById('fps-label');
   const faceTrackingStatus = document.getElementById('face-tracking-status');
   const faceReticle = document.getElementById('face-reticle');
+  const btnToggleGlasses = document.getElementById('btn-toggle-glasses');
+  const glassesLabel = document.getElementById('glasses-label');
+
+  const glassesFilter = new GlassesFilter();
+
+  if (btnToggleGlasses) {
+    btnToggleGlasses.addEventListener('click', () => {
+      const isEnabled = !glassesFilter.enabled;
+      glassesFilter.setEnabled(isEnabled);
+      glassesLabel.textContent = isEnabled ? 'Óculos: Ativo' : 'Óculos: Off';
+      btnToggleGlasses.style.color = isEnabled ? 'var(--sys-blue)' : 'rgba(235,235,245,0.7)';
+      btnToggleGlasses.style.background = isEnabled ? 'rgba(0,122,255,0.2)' : 'rgba(255,255,255,0.08)';
+    });
+  }
 
   let faceLandmarker = null;
   let p2pClient = null;
@@ -387,6 +411,9 @@
           blendShapesMap[shape.categoryName] = shape.score;
         }
 
+        // Filtro inteligente para óculos e estabilização ocular
+        const finalBlendShapes = glassesFilter.process(blendShapesMap);
+
         // Extrair Rotação 3DoF da Cabeça (Pitch, Yaw, Roll calibrados 1:1)
         let rotation = null;
         if (results.facialTransformationMatrixes && results.facialTransformationMatrixes.length > 0) {
@@ -400,7 +427,7 @@
 
         // Transmissão P2P instantânea para o Mac
         p2pClient.sendBlendshapes({
-          blendShapes: blendShapesMap,
+          blendShapes: finalBlendShapes,
           rotation: rotation
         });
       } else {
