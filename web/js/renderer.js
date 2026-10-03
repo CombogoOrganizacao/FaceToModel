@@ -254,49 +254,51 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 2. Fios de Cabelo do MetaHuman (MeshPhysicalMaterial com Anisotropia Fina, Sheen de Melanina e Strand-Based Alpha)
+            // 2. Fios de Cabelo do MetaHuman (Strand-Based Groom Shader com Micro-Fios e Anisotropia Marschner)
             else if (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow'))) {
               const strandGroom = this._createProceduralHairStrands();
-              const alphaMap = m.map ? this._synthesizeAlphaFromTexture(m.map, true) : (m.alphaMap || strandGroom.alphaMap);
               const hairMat = new THREE.MeshPhysicalMaterial({
-                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
-                map: m.map || strandGroom.map,
-                alphaMap: alphaMap,
+                color: new THREE.Color(0xffffff),
+                map: strandGroom.map,
+                alphaMap: strandGroom.alphaMap,
                 normalMap: m.normalMap || null,
-                roughness: 0.38, // Acabamento acetinado orgânico de fibra de queratina
+                roughness: 0.36, // Fibra sedosa de queratina
                 metalness: 0.0,  // Estritamente dielétrico não-metálico
-                specularIntensity: 0.85, // Destaque especular vivo de cutícula externa
-                specularColor: new THREE.Color(0x7a5238), // Reflexo quente de cutícula capilar
-                anisotropy: 0.92, // Anisotropia tangencial acentuada ao longo dos fios (estilo Unreal Engine Groom)
+                specularIntensity: 0.90, // Cutícula com alto reflexo especular de fio fino
+                specularColor: new THREE.Color(0x8a5d3f), // Reflexo quente de queratina
+                anisotropy: 0.95, // Destaque circular anisotrópico nítido ao longo da fibra
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.65, // Dispersão interna suave de melanina (Marschner Hair Model)
-                sheenColor: new THREE.Color(0x58331d),
-                sheenRoughness: 0.40,
+                sheen: 0.70, // Dispersão de luz na melanina do córtex capilar
+                sheenColor: new THREE.Color(0x54321c),
+                sheenRoughness: 0.35,
                 transparent: true,
-                alphaTest: 0.18,
+                alphaTest: 0.15,
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
                 side: THREE.DoubleSide,
                 name: m.name,
               });
-              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.5;
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.55;
               return hairMat;
             }
-            // 3. Sobrancelhas (Eyebrows — polygonOffset para eliminar Z-fighting e Alpha Sintetizado de Fios)
+            // 3. Sobrancelhas (Eyebrows — Procedural Micro-Strand Texture + Anisotropia + PolygonOffset)
             else if (matName.includes('eyebrow')) {
-              const alphaMap = m.map ? this._synthesizeAlphaFromTexture(m.map, false) : (m.alphaMap || null);
+              const browGroom = this._createProceduralEyebrowTextures();
               const browMat = new THREE.MeshPhysicalMaterial({
-                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
-                map: m.map || null,
-                alphaMap: alphaMap,
-                roughness: 0.44,
+                color: new THREE.Color(0xffffff),
+                map: browGroom.map,
+                alphaMap: browGroom.alphaMap,
+                roughness: 0.38,
                 metalness: 0.0,
-                specularIntensity: 0.40,
-                sheen: 0.45,
+                specularIntensity: 0.70,
+                specularColor: new THREE.Color(0x6b442a),
+                anisotropy: 0.85,
+                anisotropyRotation: Math.PI / 2,
+                sheen: 0.50,
                 sheenColor: new THREE.Color(0x482a16),
                 transparent: true,
-                alphaTest: 0.20,
+                alphaTest: 0.15,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -947,18 +949,51 @@ export class Renderer {
       this._headBone.updateMatrixWorld(true);
 
       // Synchronize all rigid head attachments (Hair, Eyebrows, Scalp, Facial Hair)
+      // with subtle organic inertia and strand physics on hair cards (Niagara / Hair Groom physics feel)
       if (this._headAttachments && this._headAttachments.length > 0) {
+        // Compute delta velocity for hair inertia sway
+        const dPitch = rx - (this._prevHeadPitch || 0);
+        const dYaw = ry - (this._prevHeadYaw || 0);
+        const dRoll = rz - (this._prevHeadRoll || 0);
+
+        this._prevHeadPitch = rx;
+        this._prevHeadYaw = ry;
+        this._prevHeadRoll = rz;
+
+        // Spring-damper physics accumulator for hair
+        if (!this._hairSway) this._hairSway = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+        const springK = 0.22;
+        const damping = 0.72;
+
+        this._hairSway.vx = (this._hairSway.vx + (-dPitch * 0.35) - this._hairSway.x * springK) * damping;
+        this._hairSway.vy = (this._hairSway.vy + (-dYaw * 0.40) - this._hairSway.y * springK) * damping;
+        this._hairSway.vz = (this._hairSway.vz + (-dRoll * 0.35) - this._hairSway.z * springK) * damping;
+
+        this._hairSway.x += this._hairSway.vx;
+        this._hairSway.y += this._hairSway.vy;
+        this._hairSway.z += this._hairSway.vz;
+
+        const hairInertiaEuler = new THREE.Euler(this._hairSway.x, this._hairSway.y, this._hairSway.z, 'YXZ');
+        const hairInertiaQ = new THREE.Quaternion().setFromEuler(hairInertiaEuler);
+
         for (let i = 0; i < this._headAttachments.length; i++) {
           const att = this._headAttachments[i];
           const mesh = att.mesh;
           const parent = mesh.parent;
           if (!parent) continue;
 
+          const isHair = (mesh.name || '').toLowerCase().includes('hair');
+
           // Target world matrix = HeadBone world matrix * Relative rest matrix
           const targetWorldMatrix = new THREE.Matrix4().multiplyMatrices(
             this._headBone.matrixWorld,
             att.relativeMatrix
           );
+
+          // Apply hair sway inertia around head pivot
+          if (isHair) {
+            targetWorldMatrix.multiply(new THREE.Matrix4().makeRotationFromQuaternion(hairInertiaQ));
+          }
 
           // Convert to local space of mesh parent: L = inv(ParentWorld) * TargetWorld
           const invParentWorld = new THREE.Matrix4().copy(parent.matrixWorld).invert();
@@ -1368,5 +1403,81 @@ export class Renderer {
 
     this._cachedLashTextures = { map: colorTex, alphaMap: alphaTex };
     return this._cachedLashTextures;
+  }
+
+  /**
+   * Procedural Micro-Strand Eyebrow Texture Generator.
+   * Synthesizes dense, directional fine hair fibers for realistic MetaHuman brows.
+   *
+   * @returns {{ map: THREE.CanvasTexture, alphaMap: THREE.CanvasTexture }}
+   */
+  _createProceduralEyebrowTextures() {
+    if (this._cachedEyebrowTextures) return this._cachedEyebrowTextures;
+
+    const width = 1024;
+    const height = 1024;
+
+    const colorCanvas = document.createElement('canvas');
+    colorCanvas.width = width;
+    colorCanvas.height = height;
+    const cCtx = colorCanvas.getContext('2d');
+    cCtx.fillStyle = '#1c120c';
+    cCtx.fillRect(0, 0, width, height);
+
+    const alphaCanvas = document.createElement('canvas');
+    alphaCanvas.width = width;
+    alphaCanvas.height = height;
+    const aCtx = alphaCanvas.getContext('2d');
+    aCtx.fillStyle = '#000000';
+    aCtx.fillRect(0, 0, width, height);
+
+    // Draw directional hair fibers across eyebrow card UV space
+    const numStrands = 220;
+    for (let i = 0; i < numStrands; i++) {
+      const xStart = Math.random() * width;
+      const yStart = Math.random() * height;
+      const length = 40 + Math.random() * 90;
+      const angle = (Math.PI * 0.15) + (Math.random() - 0.5) * 0.35; // ~25 degree growth angle
+
+      const xEnd = xStart + Math.cos(angle) * length;
+      const yEnd = yStart + Math.sin(angle) * length;
+
+      cCtx.strokeStyle = (i % 2 === 0) ? '#2e1e14' : '#1a100a';
+      cCtx.lineWidth = 1.5;
+      cCtx.beginPath();
+      cCtx.moveTo(xStart, yStart);
+      cCtx.quadraticCurveTo(
+        (xStart + xEnd) * 0.5 + (Math.random() - 0.5) * 8,
+        (yStart + yEnd) * 0.5 - 4,
+        xEnd,
+        yEnd
+      );
+      cCtx.stroke();
+
+      aCtx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      aCtx.lineWidth = 1.3;
+      aCtx.beginPath();
+      aCtx.moveTo(xStart, yStart);
+      aCtx.quadraticCurveTo(
+        (xStart + xEnd) * 0.5 + (Math.random() - 0.5) * 8,
+        (yStart + yEnd) * 0.5 - 4,
+        xEnd,
+        yEnd
+      );
+      aCtx.stroke();
+    }
+
+    const colorTex = new THREE.CanvasTexture(colorCanvas);
+    colorTex.wrapS = THREE.RepeatWrapping;
+    colorTex.wrapT = THREE.RepeatWrapping;
+    colorTex.needsUpdate = true;
+
+    const alphaTex = new THREE.CanvasTexture(alphaCanvas);
+    alphaTex.wrapS = THREE.RepeatWrapping;
+    alphaTex.wrapT = THREE.RepeatWrapping;
+    alphaTex.needsUpdate = true;
+
+    this._cachedEyebrowTextures = { map: colorTex, alphaMap: alphaTex };
+    return this._cachedEyebrowTextures;
   }
 }
