@@ -254,51 +254,95 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 2. Fios de Cabelo do MetaHuman (Strand-Based Groom Shader com Micro-Fios e Anisotropia Marschner)
+            // 2. Fios de Cabelo do MetaHuman (Strand-Based Groom Shader no padrão Unreal Engine 5.8 / Marschner Dual-Lobe)
             else if (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow'))) {
               const strandGroom = this._createProceduralHairStrands();
               const hairMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0xffffff),
+                color: new THREE.Color(0x1a120d), // Base melanin espresso rica da Unreal Engine (#1a120d)
                 map: strandGroom.map,
                 alphaMap: strandGroom.alphaMap,
                 normalMap: m.normalMap || null,
-                roughness: 0.36, // Fibra sedosa de queratina
-                metalness: 0.0,  // Estritamente dielétrico não-metálico
-                specularIntensity: 0.90, // Cutícula com alto reflexo especular de fio fino
-                specularColor: new THREE.Color(0x8a5d3f), // Reflexo quente de queratina
-                anisotropy: 0.95, // Destaque circular anisotrópico nítido ao longo da fibra
+                roughness: 0.28, // Fibra suave de queratina
+                metalness: 0.0,
+                clearcoat: 0.45, // Lobo R primário: cutícula superficial nítida e translúcida
+                clearcoatRoughness: 0.18,
+                specularIntensity: 0.95, // Especularidade nítida dos fios
+                specularColor: new THREE.Color(0x9d6c48), // Reflexo secundário TRT córtex
+                anisotropy: 0.92, // Anisotropia acentuada ao longo da extensão das fibras
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.70, // Dispersão de luz na melanina do córtex capilar
-                sheenColor: new THREE.Color(0x54321c),
-                sheenRoughness: 0.35,
+                sheen: 0.85, // Dispersão de luz transmitida interna entre os fios
+                sheenColor: new THREE.Color(0x422615),
+                sheenRoughness: 0.30,
                 transparent: true,
-                alphaTest: 0.15,
+                alphaTest: 0.12,
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
                 side: THREE.DoubleSide,
                 name: m.name,
               });
-              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.55;
+
+              // Injeção de Shader Customizado: Marschner Dual-Lobe e Micro-Perturbação de Fios
+              hairMat.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                  '#include <roughnessmap_fragment>',
+                  `#include <roughnessmap_fragment>
+                  // Procedural micro-strand normal shift along hair fibers
+                  vec2 strandCoord = vUv * vec2(240.0, 1.0);
+                  float strandSheen = sin(strandCoord.x * 3.14159) * 0.08;
+                  roughnessFactor = clamp(roughnessFactor + strandSheen, 0.15, 0.65);
+                  `
+                );
+              };
+
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.50;
               return hairMat;
             }
             // 3. Sobrancelhas (Eyebrows — Procedural Micro-Strand Texture + Anisotropia + PolygonOffset)
             else if (matName.includes('eyebrow')) {
               const browGroom = this._createProceduralEyebrowTextures();
               const browMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0xffffff),
+                color: new THREE.Color(0x160f0a),
                 map: browGroom.map,
                 alphaMap: browGroom.alphaMap,
-                roughness: 0.38,
+                roughness: 0.32,
                 metalness: 0.0,
-                specularIntensity: 0.70,
-                specularColor: new THREE.Color(0x6b442a),
-                anisotropy: 0.85,
+                specularIntensity: 0.65,
+                specularColor: new THREE.Color(0x5c3b24),
+                anisotropy: 0.80,
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.50,
-                sheenColor: new THREE.Color(0x482a16),
+                sheen: 0.45,
+                sheenColor: new THREE.Color(0x381f10),
                 transparent: true,
-                alphaTest: 0.15,
+                alphaTest: 0.10,
+                depthWrite: true,
+                depthTest: true,
+                polygonOffset: true,
+                polygonOffsetFactor: -3,
+                polygonOffsetUnits: -6,
+                alphaToCoverage: true,
+                side: THREE.DoubleSide,
+                name: m.name,
+              });
+              if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.45;
+              return browMat;
+            }
+            // 4. Cílios (Eyelashes / LashMat — UE 5.8 Vertex Color Root-to-Tip Tapering)
+            else if (matName.includes('eyelashes') || matName.includes('lashmat')) {
+              const hasVertexColor = Boolean(node.geometry && node.geometry.attributes && node.geometry.attributes.color);
+              const lashTex = this._createProceduralEyelashTextures();
+              const lashMat = new THREE.MeshPhysicalMaterial({
+                color: new THREE.Color(0x100b08), // Tom ébano natural profundo
+                map: lashTex.map,
+                alphaMap: lashTex.alphaMap,
+                roughness: 0.25, // Fios hidratados com brilho delicado
+                metalness: 0.0,
+                specularIntensity: 0.75,
+                specularColor: new THREE.Color(0x604533),
+                sheen: 0.40,
+                sheenColor: new THREE.Color(0x281910),
+                transparent: true,
+                alphaTest: 0.14,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -306,35 +350,23 @@ export class Renderer {
                 polygonOffsetUnits: -4,
                 alphaToCoverage: true,
                 side: THREE.DoubleSide,
+                vertexColors: hasVertexColor,
                 name: m.name,
               });
-              if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.5;
-              return browMat;
-            }
-            // 4. Cílios (Eyelashes / LashMat — Atlas Procedural Realista de Fios Afilados e Umidade Suave)
-            else if (matName.includes('eyelashes') || matName.includes('lashmat')) {
-              const lashTex = this._createProceduralEyelashTextures();
-              const lashMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x18100c),
-                map: lashTex.map,
-                alphaMap: lashTex.alphaMap,
-                roughness: 0.38,
-                metalness: 0.0,
-                specularIntensity: 0.45,
-                sheen: 0.35,
-                sheenColor: new THREE.Color(0x382214),
-                transparent: true,
-                alphaTest: 0.20,
-                depthWrite: true,
-                depthTest: true,
-                polygonOffset: true,
-                polygonOffsetFactor: -1,
-                polygonOffsetUnits: -2,
-                alphaToCoverage: true,
-                side: THREE.DoubleSide,
-                name: m.name,
-              });
-              if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.6;
+
+              // Tapering e gradiente raiz-ponta do MetaHuman
+              lashMat.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                  '#include <alphamap_fragment>',
+                  `#include <alphamap_fragment>
+                  // Soft root-to-tip tapering curve
+                  float tipTaper = smoothstep(0.0, 0.92, 1.0 - abs(vUv.y - 0.5) * 1.8);
+                  diffuseColor.a *= clamp(tipTaper, 0.1, 1.0);
+                  `
+                );
+              };
+
+              if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.55;
               return lashMat;
             }
             // 5. Roupas e Tecidos
@@ -1079,21 +1111,26 @@ export class Renderer {
   /* ─── Private ─────────────────────────────────────────────────────────── */
 
   _setupLighting() {
-    this._ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    // Unreal Engine 5.8 Cinematic Portrait Lighting Setup
+    this._ambientLight = new THREE.AmbientLight(0xfff8f2, 0.45);
     this._scene.add(this._ambientLight);
 
-    this._keyLight = new THREE.DirectionalLight(0xfff5e0, 2.0);
-    this._keyLight.position.set(1.5, 2.0, 2.0);
+    // Key Light: 5500K daylight key light with subtle warmth and crisp specular shaping
+    this._keyLight = new THREE.DirectionalLight(0xfff6ee, 2.4);
+    this._keyLight.position.set(1.4, 1.8, 2.2);
     this._keyLight.castShadow = true;
     this._keyLight.shadow.mapSize.set(1024, 1024);
+    this._keyLight.shadow.bias = -0.0001;
     this._scene.add(this._keyLight);
 
-    this._fillLight = new THREE.DirectionalLight(0xd0e8ff, 1.0);
-    this._fillLight.position.set(-2.0, 0.5, 1.5);
+    // Fill Light: Soft cool fill on shadow side to preserve hair volume & skin micro-contrast
+    this._fillLight = new THREE.DirectionalLight(0xbcd7ff, 0.85);
+    this._fillLight.position.set(-1.8, 0.4, 1.6);
     this._scene.add(this._fillLight);
 
-    this._rimLight = new THREE.DirectionalLight(0xaa88ff, 0.8);
-    this._rimLight.position.set(0, 1.0, -2.0);
+    // Rim / Hair Kicker Light: High-angle back kicker to trigger anisotropic cuticle sheen
+    this._rimLight = new THREE.DirectionalLight(0xffeedd, 1.6);
+    this._rimLight.position.set(0.2, 2.2, -2.2);
     this._scene.add(this._rimLight);
 
     this._updateLightPosition();
@@ -1264,7 +1301,7 @@ export class Renderer {
     colorCanvas.width = width;
     colorCanvas.height = height;
     const cCtx = colorCanvas.getContext('2d');
-    cCtx.fillStyle = '#26180f'; // Rich natural dark brown / black keratin base
+    cCtx.fillStyle = '#17100b'; // Unreal Engine MetaHuman natural dark espresso base
     cCtx.fillRect(0, 0, width, height);
 
     // 2. Alpha Mask Canvas
@@ -1275,38 +1312,38 @@ export class Renderer {
     aCtx.fillStyle = '#000000';
     aCtx.fillRect(0, 0, width, height);
 
-    // Draw thousands of fine strands along vertical UV cards
-    const numCards = 8;
+    // Draw high-density micro-strands along vertical UV hair card columns
+    const numCards = 16; // 16 columns for finer micro-strand distribution
     const cardWidth = width / numCards;
 
     for (let c = 0; c < numCards; c++) {
       const cardX = c * cardWidth;
-      const numStrands = 120; // 120 micro-strands per card column
+      const numStrands = 90; // Dense silky groom clumps
 
       for (let s = 0; s < numStrands; s++) {
-        const xOffset = (s / numStrands) * (cardWidth - 8) + 4 + (Math.sin(s * 1.7) * 2.5);
+        const xOffset = (s / numStrands) * (cardWidth - 6) + 3 + (Math.sin(s * 2.3) * 2.0);
         const startX = cardX + xOffset;
-        const waveFreq = 0.003 + (s % 5) * 0.001;
-        const waveAmp = 6.0 + (s % 4) * 3.0;
+        const waveFreq = 0.0025 + (s % 7) * 0.0008;
+        const waveAmp = 4.0 + (s % 5) * 2.5;
 
-        // Strand length with natural variance
-        const strandLen = height * (0.85 + (Math.sin(s * 3.3) * 0.12));
-        const startY = height * 0.02;
+        // Strand length with natural cuticle variance
+        const strandLen = height * (0.90 + (Math.sin(s * 4.1) * 0.08));
+        const startY = height * 0.01;
 
-        // Strand color variance (melanin distribution)
-        const strandTone = (s % 7 === 0) ? '#4a3020' : (s % 3 === 0) ? '#382215' : '#22140b';
+        // Subtle melanin distribution (natural warm undertones)
+        const strandTone = (s % 9 === 0) ? '#3e291c' : (s % 4 === 0) ? '#2c1c13' : '#1e140d';
         cCtx.strokeStyle = strandTone;
-        cCtx.lineWidth = 1.6;
+        cCtx.lineWidth = 1.4;
 
         cCtx.beginPath();
         cCtx.moveTo(startX, startY);
 
-        aCtx.strokeStyle = `rgba(255, 255, 255, ${0.75 + (s % 3) * 0.1})`;
-        aCtx.lineWidth = 1.4;
+        aCtx.strokeStyle = `rgba(255, 255, 255, ${0.82 + (s % 4) * 0.05})`;
+        aCtx.lineWidth = 1.3;
         aCtx.beginPath();
         aCtx.moveTo(startX, startY);
 
-        const steps = 30;
+        const steps = 36;
         const dy = (strandLen - startY) / steps;
 
         for (let j = 1; j <= steps; j++) {
