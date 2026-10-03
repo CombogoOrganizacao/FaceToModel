@@ -926,6 +926,9 @@ function setupTimeline() {
         return;
       }
 
+      btnExportGLB.disabled = true;
+      btnExportGLB.style.opacity = '0.5';
+      btnExportGLB.style.pointerEvents = 'none';
       showToast('Empacotando animação 3D no modelo (.glb)...', 'info');
 
       try {
@@ -946,7 +949,7 @@ function setupTimeline() {
         });
 
         if (!animationClip) {
-          showToast('Não foi possível gerar faixas de animação da gravação.', 'error');
+          showToast('Nenhuma faixa de movimento detectada para exportar.', 'error');
           return;
         }
 
@@ -963,6 +966,10 @@ function setupTimeline() {
       } catch (err) {
         console.error('[main] Erro na exportação do modelo GLB:', err);
         showToast('Erro ao exportar modelo 3D: ' + err.message, 'error');
+      } finally {
+        btnExportGLB.disabled = false;
+        btnExportGLB.style.opacity = '';
+        btnExportGLB.style.pointerEvents = '';
       }
     });
   }

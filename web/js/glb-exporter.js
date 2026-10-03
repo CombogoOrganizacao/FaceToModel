@@ -14,7 +14,8 @@
  * @module glb-exporter
  */
 
-import { GLTFExporter } from 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/exporters/GLTFExporter.js';
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 /**
  * Builds a THREE.AnimationClip from MotionTimeline recorded frames.
@@ -45,24 +46,46 @@ export function buildAnimationClip({
   const validFrames = frames.filter((f) => f.time >= trimIn && (trimOut <= trimIn || f.time <= trimOut));
   if (validFrames.length === 0) return null;
 
-  // Normalize time so clip starts exactly at 0.0s
+  // Normalize time so clip starts exactly at 0.0s and ensure strictly increasing timestamps
   const startTime = validFrames[0].time;
-  const times = validFrames.map((f) => Math.max(0, (f.time - startTime)));
+  const times = [];
+  const filteredIndices = [];
+  let lastT = -1;
+
+  for (let i = 0; i < validFrames.length; i++) {
+    const rawT = Math.max(0, validFrames[i].time - startTime);
+    // Three.js KeyframeTrack requires strictly increasing times (rawT > lastT)
+    if (rawT > lastT + 0.0001) {
+      times.push(rawT);
+      filteredIndices.push(i);
+      lastT = rawT;
+    }
+  }
+
+  if (times.length < 2) return null;
   const duration = times[times.length - 1] || 0.01;
 
   const tracks = [];
 
   // 1. Group meshes by morph targets
   const meshMap = new Map(); // mesh -> Map<morphIndex, valuesArray>
+  let meshIndex = 0;
   model.traverse((node) => {
-    if (node.isMesh && node.morphTargetDictionary) {
-      meshMap.set(node, new Map());
+    if (node.isMesh) {
+      if (!node.name || node.name.trim() === '') {
+        node.name = `Mesh_${meshIndex++}`;
+      }
+      if (node.morphTargetDictionary) {
+        meshMap.set(node, new Map());
+      }
     }
   });
 
+  const numKeyframes = filteredIndices.length;
+
   // Pre-fill mesh morph target tracks
-  for (let i = 0; i < validFrames.length; i++) {
-    const frame = validFrames[i];
+  for (let k = 0; k < numKeyframes; k++) {
+    const frame = validFrames[filteredIndices[k]];
     const shapes = frame.blendShapes || {};
 
     // For each blendshape received, find mapped meshes
@@ -75,11 +98,11 @@ export function buildAnimationClip({
         if (!meshMap.has(mesh)) return;
         const targetMap = meshMap.get(mesh);
         if (!targetMap.has(index)) {
-          // Initialize array filled with zeros up to current frame
-          const arr = new Float32Array(validFrames.length);
+          // Initialize array filled with zeros for all keyframes
+          const arr = new Float32Array(numKeyframes);
           targetMap.set(index, arr);
         }
-        targetMap.get(index)[i] = Math.max(0, Math.min(1, weight));
+        targetMap.get(index)[k] = Math.max(0, Math.min(1, weight));
       });
     }
   }
@@ -106,14 +129,15 @@ export function buildAnimationClip({
 
   // 2. Head and Neck Bone Rotations (or Root Model if bust)
   if (headBone) {
-    const headRotations = new Float32Array(validFrames.length * 4);
-    const neckRotations = neckBone ? new Float32Array(validFrames.length * 4) : null;
+    const headRotations = new Float32Array(numKeyframes * 4);
+    const neckRotations = neckBone ? new Float32Array(numKeyframes * 4) : null;
 
     const restHeadQ = headBone.userData.restQuaternion || headBone.quaternion.clone();
     const restNeckQ = neckBone ? (neckBone.userData.restQuaternion || neckBone.quaternion.clone()) : null;
 
-    for (let i = 0; i < validFrames.length; i++) {
-      const rot = validFrames[i].rotation || { pitch: 0, yaw: 0, roll: 0 };
+    for (let k = 0; k < numKeyframes; k++) {
+      const frame = validFrames[filteredIndices[k]];
+      const rot = frame.rotation || { pitch: 0, yaw: 0, roll: 0 };
       const rx = rot.pitch || 0;
       const ry = rot.yaw || 0;
       const rz = rot.roll || 0;
@@ -122,26 +146,26 @@ export function buildAnimationClip({
         // 25% Neck distribution
         const nEuler = new THREE.Euler(rx * 0.25, ry * 0.25, rz * 0.25, 'YXZ');
         const nQ = restNeckQ.clone().multiply(new THREE.Quaternion().setFromEuler(nEuler));
-        neckRotations[i * 4 + 0] = nQ.x;
-        neckRotations[i * 4 + 1] = nQ.y;
-        neckRotations[i * 4 + 2] = nQ.z;
-        neckRotations[i * 4 + 3] = nQ.w;
+        neckRotations[k * 4 + 0] = nQ.x;
+        neckRotations[k * 4 + 1] = nQ.y;
+        neckRotations[k * 4 + 2] = nQ.z;
+        neckRotations[k * 4 + 3] = nQ.w;
 
         // 75% Head distribution
         const hEuler = new THREE.Euler(rx * 0.75, ry * 0.75, rz * 0.75, 'YXZ');
         const hQ = restHeadQ.clone().multiply(new THREE.Quaternion().setFromEuler(hEuler));
-        headRotations[i * 4 + 0] = hQ.x;
-        headRotations[i * 4 + 1] = hQ.y;
-        headRotations[i * 4 + 2] = hQ.z;
-        headRotations[i * 4 + 3] = hQ.w;
+        headRotations[k * 4 + 0] = hQ.x;
+        headRotations[k * 4 + 1] = hQ.y;
+        headRotations[k * 4 + 2] = hQ.z;
+        headRotations[k * 4 + 3] = hQ.w;
       } else {
         // 100% Head
         const hEuler = new THREE.Euler(rx, ry, rz, 'YXZ');
         const hQ = restHeadQ.clone().multiply(new THREE.Quaternion().setFromEuler(hEuler));
-        headRotations[i * 4 + 0] = hQ.x;
-        headRotations[i * 4 + 1] = hQ.y;
-        headRotations[i * 4 + 2] = hQ.z;
-        headRotations[i * 4 + 3] = hQ.w;
+        headRotations[k * 4 + 0] = hQ.x;
+        headRotations[k * 4 + 1] = hQ.y;
+        headRotations[k * 4 + 2] = hQ.z;
+        headRotations[k * 4 + 3] = hQ.w;
       }
     }
 
@@ -151,15 +175,16 @@ export function buildAnimationClip({
     }
   } else if (model) {
     // Model pivot rotation (for bust models without bones)
-    const modelRotations = new Float32Array(validFrames.length * 4);
-    for (let i = 0; i < validFrames.length; i++) {
-      const rot = validFrames[i].rotation || { pitch: 0, yaw: 0, roll: 0 };
+    const modelRotations = new Float32Array(numKeyframes * 4);
+    for (let k = 0; k < numKeyframes; k++) {
+      const frame = validFrames[filteredIndices[k]];
+      const rot = frame.rotation || { pitch: 0, yaw: 0, roll: 0 };
       const euler = new THREE.Euler(rot.pitch || 0, rot.yaw || 0, rot.roll || 0, 'YXZ');
       const q = new THREE.Quaternion().setFromEuler(euler);
-      modelRotations[i * 4 + 0] = q.x;
-      modelRotations[i * 4 + 1] = q.y;
-      modelRotations[i * 4 + 2] = q.z;
-      modelRotations[i * 4 + 3] = q.w;
+      modelRotations[k * 4 + 0] = q.x;
+      modelRotations[k * 4 + 1] = q.y;
+      modelRotations[k * 4 + 2] = q.z;
+      modelRotations[k * 4 + 3] = q.w;
     }
     tracks.push(new THREE.QuaternionKeyframeTrack(`${model.name || 'FaceToModel_Pivot'}.quaternion`, timesArray, modelRotations));
   }
