@@ -38,6 +38,7 @@ export function buildAnimationClip({
   modelMap,
   headBone = null,
   neckBone = null,
+  headAttachments = [],
   clipName = 'FaceToModel_MotionCapture'
 }) {
   if (!frames || frames.length === 0) return null;
@@ -172,6 +173,69 @@ export function buildAnimationClip({
     tracks.push(new THREE.QuaternionKeyframeTrack(`${headBone.name}.quaternion`, timesArray, headRotations));
     if (neckBone && neckRotations) {
       tracks.push(new THREE.QuaternionKeyframeTrack(`${neckBone.name}.quaternion`, timesArray, neckRotations));
+    }
+
+    // 3. Synchronize non-skinned head attachments (hair, eyebrows) in exported animation
+    if (headAttachments && headAttachments.length > 0) {
+      headAttachments.forEach((att) => {
+        const mesh = att.mesh;
+        const meshName = mesh.name;
+        if (!meshName) return;
+
+        const posTrackValues = new Float32Array(numKeyframes * 3);
+        const rotTrackValues = new Float32Array(numKeyframes * 4);
+
+        const tempHeadQ = new THREE.Quaternion();
+        const tempEuler = new THREE.Euler();
+        const targetWorldMat = new THREE.Matrix4();
+        const targetLocalMat = new THREE.Matrix4();
+        const invParentWorld = new THREE.Matrix4();
+        const pVec = new THREE.Vector3();
+        const qQuat = new THREE.Quaternion();
+        const sVec = new THREE.Vector3();
+
+        for (let k = 0; k < numKeyframes; k++) {
+          const frame = validFrames[filteredIndices[k]];
+          const rot = frame.rotation || { pitch: 0, yaw: 0, roll: 0 };
+          const rx = rot.pitch || 0;
+          const ry = rot.yaw || 0;
+          const rz = rot.roll || 0;
+
+          // Head bone orientation for this keyframe
+          const hRatio = neckBone ? 0.75 : 1.0;
+          tempEuler.set(rx * hRatio, ry * hRatio, rz * hRatio, 'YXZ');
+          tempHeadQ.copy(restHeadQ).multiply(new THREE.Quaternion().setFromEuler(tempEuler));
+
+          // Compose virtual head bone matrix
+          const headMat = new THREE.Matrix4().compose(
+            headBone.position,
+            tempHeadQ,
+            headBone.scale
+          );
+
+          targetWorldMat.multiplyMatrices(headMat, att.relativeMatrix);
+          if (mesh.parent) {
+            invParentWorld.copy(mesh.parent.matrixWorld).invert();
+            targetLocalMat.multiplyMatrices(invParentWorld, targetWorldMat);
+          } else {
+            targetLocalMat.copy(targetWorldMat);
+          }
+
+          targetLocalMat.decompose(pVec, qQuat, sVec);
+
+          posTrackValues[k * 3 + 0] = pVec.x;
+          posTrackValues[k * 3 + 1] = pVec.y;
+          posTrackValues[k * 3 + 2] = pVec.z;
+
+          rotTrackValues[k * 4 + 0] = qQuat.x;
+          rotTrackValues[k * 4 + 1] = qQuat.y;
+          rotTrackValues[k * 4 + 2] = qQuat.z;
+          rotTrackValues[k * 4 + 3] = qQuat.w;
+        }
+
+        tracks.push(new THREE.VectorKeyframeTrack(`${meshName}.position`, timesArray, posTrackValues));
+        tracks.push(new THREE.QuaternionKeyframeTrack(`${meshName}.quaternion`, timesArray, rotTrackValues));
+      });
     }
   } else if (model) {
     // Model pivot rotation (for bust models without bones)

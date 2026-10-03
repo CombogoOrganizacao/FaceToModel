@@ -936,6 +936,7 @@ function setupTimeline() {
         const modelMap = renderer.getModelMap();
         const headBone = renderer.getHeadBone();
         const neckBone = renderer.getNeckBone();
+        const headAttachments = renderer.getHeadAttachments();
 
         const animationClip = buildAnimationClip({
           frames: motionTimeline.frames,
@@ -945,6 +946,7 @@ function setupTimeline() {
           modelMap: modelMap,
           headBone: headBone,
           neckBone: neckBone,
+          headAttachments: headAttachments,
           clipName: 'FaceToModel_MotionTake'
         });
 
