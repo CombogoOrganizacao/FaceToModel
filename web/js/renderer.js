@@ -241,6 +241,8 @@ export class Renderer {
       const mName = (node.material?.name || '').toLowerCase();
       if (
         nName.includes('skm_bo_') ||
+        nName.includes('skm_asha_') ||
+        nName.includes('asha') ||
         nName.includes('sidesweptfringe') ||
         mName.includes('cardsmesh') ||
         mName.includes('lashmat') ||
@@ -277,23 +279,23 @@ export class Renderer {
               const alphaMask = this._synthesizeAlphaFromTexture(originalMap, true);
 
               const hairMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x1a120d), // Base melanin espresso profunda da Unreal Engine (#1a120d)
+                color: originalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x1a120d),
                 map: originalMap,
                 alphaMap: alphaMask,
                 normalMap: m.normalMap || null,
-                roughness: 0.32, // Fibra suave de queratina
+                roughness: 0.35, // Fibra suave e sedosa de queratina
                 metalness: 0.0,  // Estritamente não metálico
-                clearcoat: 0.35, // Lobo R primário: cutícula superficial nítida
+                clearcoat: 0.45, // Lobo R primário: cutícula superficial nítida
                 clearcoatRoughness: 0.22,
-                specularIntensity: 0.90, // Especularidade nítida dos fios
+                specularIntensity: 0.85, // Especularidade nítida dos fios
                 specularColor: new THREE.Color(0x9d6c48), // Reflexo secundário TRT córtex
                 anisotropy: 0.88, // Anisotropia acentuada ao longo da extensão das fibras
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.80, // Dispersão de luz transmitida interna entre os fios
+                sheen: 0.70, // Dispersão de luz transmitida interna entre os fios
                 sheenColor: new THREE.Color(0x422615),
                 sheenRoughness: 0.32,
                 transparent: true,
-                alphaTest: 0.08, // Recorte anti-aliased fino sem blocos sólidos
+                alphaTest: 0.03, // Preserva volume e densidade total dos fios sem recorte excessivo
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
@@ -308,13 +310,13 @@ export class Renderer {
                   `#include <roughnessmap_fragment>
                   // Procedural micro-strand normal shift along hair fibers
                   vec2 strandCoord = vUv * vec2(240.0, 1.0);
-                  float strandSheen = sin(strandCoord.x * 3.14159) * 0.08;
-                  roughnessFactor = clamp(roughnessFactor + strandSheen, 0.15, 0.65);
+                  float strandSheen = sin(strandCoord.x * 3.14159) * 0.06;
+                  roughnessFactor = clamp(roughnessFactor + strandSheen, 0.18, 0.62);
                   `
                 );
               };
 
-              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.50;
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.55;
               return hairMat;
             }
             // 3. Sobrancelhas do MetaHuman (CardsMesh — Alpha Synthesized + Feathering + PolygonOffset)
@@ -323,10 +325,10 @@ export class Renderer {
               const alphaMask = this._synthesizeAlphaFromTexture(originalMap, true);
 
               const browMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x160f0a),
+                color: originalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x160f0a),
                 map: originalMap,
                 alphaMap: alphaMask,
-                roughness: 0.35,
+                roughness: 0.38,
                 metalness: 0.0,
                 specularIntensity: 0.65,
                 specularColor: new THREE.Color(0x5c3b24),
@@ -335,7 +337,7 @@ export class Renderer {
                 sheen: 0.45,
                 sheenColor: new THREE.Color(0x381f10),
                 transparent: true,
-                alphaTest: 0.08,
+                alphaTest: 0.03,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -348,19 +350,23 @@ export class Renderer {
               if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.45;
               return browMat;
             }
-            // 4. Cílios do MetaHuman (SKM_bo_FaceMesh.001_LashMat — Fios Delgados em Leque com Vertex Colors)
-            else if (isMetaHuman && (matName.includes('eyelashes') || matName.includes('lashmat'))) {
+            // 4. Cílios do MetaHuman (SKM_bo_FaceMesh.001_LashMat / SKM_asha_FaceMesh.001_LashMat — Fios Tapered com Alpha Atlas)
+            else if (isMetaHuman && (matName.includes('eyelashes') || matName.includes('lashmat') || matName.includes('lash_mat'))) {
+              const lashTex = this._createProceduralEyelashTextures();
               const hasVertexColor = Boolean(node.geometry && node.geometry.attributes && node.geometry.attributes.color);
+
               const lashMat = new THREE.MeshPhysicalMaterial({
                 color: new THREE.Color(0x120c09), // Tom ébano natural profundo
-                roughness: 0.28, // Fios hidratados com brilho delicado
+                map: lashTex.map,
+                alphaMap: lashTex.alphaMap,
+                roughness: 0.26, // Fios hidratados com brilho delicado
                 metalness: 0.0,
-                specularIntensity: 0.70,
+                specularIntensity: 0.75,
                 specularColor: new THREE.Color(0x503525),
-                sheen: 0.35,
+                sheen: 0.40,
                 sheenColor: new THREE.Color(0x281910),
                 transparent: true,
-                alphaTest: 0.05,
+                alphaTest: 0.06,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -377,9 +383,9 @@ export class Renderer {
                 shader.fragmentShader = shader.fragmentShader.replace(
                   '#include <alphamap_fragment>',
                   `#include <alphamap_fragment>
-                  // Soft root-to-tip tapering curve
-                  float tipTaper = smoothstep(0.0, 0.95, 1.0 - abs(vUv.y - 0.5) * 1.6);
-                  diffuseColor.a *= clamp(tipTaper, 0.15, 1.0);
+                  // Soft root-to-tip and edge tapering curve for natural delicate eyelashes
+                  float tipTaper = smoothstep(0.0, 0.92, 1.0 - abs(vUv.y - 0.5) * 1.5);
+                  diffuseColor.a *= clamp(tipTaper, 0.1, 1.0);
                   `
                 );
               };
@@ -1266,53 +1272,27 @@ export class Renderer {
       const data = imgData.data;
       const len = data.length;
 
-      // MetaHuman baked cards: Background is solid brown #34281d RGB(52, 40, 29)
-      // Strands/cutouts are dark/black fibers RGB(0, 0, 0)
-      const bgR = 52.0;
-      const bgG = 40.0;
-      const bgB = 29.0;
-
+      // In MetaHuman baked hair/eyebrow textures, empty space outside cards is pure black RGB(0,0,0).
+      // Hair and eyebrow strands contain the rich melanin base tone RGB(52, 40, 29).
       for (let i = 0; i < len; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
+        const maxVal = Math.max(r, g, b);
 
-        if (isHairCard) {
-          const diffR = Math.abs(r - bgR);
-          const diffG = Math.abs(g - bgG);
-          const diffB = Math.abs(b - bgB);
-          const dist = (diffR + diffG + diffB) / 3.0;
-
-          if (dist < 4.0) {
-            // Background area: fully transparent
-            data[i] = 0;
-            data[i + 1] = 0;
-            data[i + 2] = 0;
-            data[i + 3] = 0;
-          } else {
-            // Fine strand fiber: opaque with anti-aliasing transition
-            const alphaVal = Math.min(255, Math.round((dist / 22.0) * 255));
-            data[i] = alphaVal;
-            data[i + 1] = alphaVal;
-            data[i + 2] = alphaVal;
-            data[i + 3] = 255;
-          }
+        if (maxVal <= 2) {
+          // Transparent empty space / card cutout
+          data[i] = 0;
+          data[i + 1] = 0;
+          data[i + 2] = 0;
+          data[i + 3] = 0;
         } else {
-          // Standard dark background texture: dark = transparent, bright = strand
-          const maxVal = Math.max(r, g, b);
-          if (maxVal <= 4) {
-            data[i] = 0;
-            data[i + 1] = 0;
-            data[i + 2] = 0;
-            data[i + 3] = 0;
-          } else {
-            const norm = Math.min(1.0, Math.max(0.0, (maxVal - 4) / 42.0));
-            const alpha = Math.round(norm * 255);
-            data[i] = alpha;
-            data[i + 1] = alpha;
-            data[i + 2] = alpha;
-            data[i + 3] = 255;
-          }
+          // Hair / Eyebrow card strand area: full opacity with soft anti-aliased edge
+          const edgeAlpha = Math.min(255, Math.round(Math.min(1.0, (maxVal - 1.0) / 8.0) * 255));
+          data[i] = edgeAlpha;
+          data[i + 1] = edgeAlpha;
+          data[i + 2] = edgeAlpha;
+          data[i + 3] = 255;
         }
       }
 
@@ -1451,27 +1431,27 @@ export class Renderer {
     aCtx.fillRect(0, 0, width, height);
 
     // Draw realistic tapered eyelash strands repeating across UV space
-    const numStrands = 48;
+    const numStrands = 80;
     const spacing = width / numStrands;
 
     aCtx.fillStyle = '#ffffff';
 
     for (let i = 0; i < numStrands; i++) {
-      const xBase = i * spacing + spacing * 0.5 + (Math.sin(i * 3.7) * (spacing * 0.2));
-      const strandLen = height * (0.65 + Math.sin(i * 2.1) * 0.25);
-      const curlCurve = (Math.sin(i * 1.3) * 35) + (i % 2 === 0 ? 12 : -12);
-      const rootWidth = 5.0 + Math.sin(i * 5.1) * 1.5;
+      const xBase = i * spacing + spacing * 0.5 + (Math.sin(i * 3.7) * (spacing * 0.25));
+      const strandLen = height * (0.75 + Math.sin(i * 2.1) * 0.20);
+      const curlCurve = (Math.sin(i * 1.3) * 28) + (i % 2 === 0 ? 10 : -10);
+      const rootWidth = 4.2 + Math.sin(i * 5.1) * 1.2;
 
       // Root to tip quadratic curve
       aCtx.beginPath();
       aCtx.moveTo(xBase - rootWidth * 0.5, height);
       aCtx.lineTo(xBase + rootWidth * 0.5, height);
       aCtx.quadraticCurveTo(
-        xBase + curlCurve * 0.5 + 2, height - strandLen * 0.5,
+        xBase + curlCurve * 0.5 + 1.5, height - strandLen * 0.5,
         xBase + curlCurve, height - strandLen
       );
       aCtx.quadraticCurveTo(
-        xBase + curlCurve * 0.5 - 2, height - strandLen * 0.5,
+        xBase + curlCurve * 0.5 - 1.5, height - strandLen * 0.5,
         xBase - rootWidth * 0.5, height
       );
       aCtx.closePath();
@@ -1481,11 +1461,13 @@ export class Renderer {
     const colorTex = new THREE.CanvasTexture(colorCanvas);
     colorTex.wrapS = THREE.RepeatWrapping;
     colorTex.wrapT = THREE.ClampToEdgeWrapping;
+    colorTex.flipY = false;
     colorTex.needsUpdate = true;
 
     const alphaTex = new THREE.CanvasTexture(alphaCanvas);
     alphaTex.wrapS = THREE.RepeatWrapping;
     alphaTex.wrapT = THREE.ClampToEdgeWrapping;
+    alphaTex.flipY = false;
     alphaTex.needsUpdate = true;
 
     this._cachedLashTextures = { map: colorTex, alphaMap: alphaTex };
