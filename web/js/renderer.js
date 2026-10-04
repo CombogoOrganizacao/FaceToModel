@@ -139,6 +139,11 @@ export class Renderer {
     this._showTextures = true;
     this._lightAzimuth = 45;
     this._lightElevation = 35;
+    this._lightIntensity = 1.0;
+    this._baseKeyIntensity = 3.0;
+    this._baseFillIntensity = 0.85;
+    this._baseRimIntensity = 2.0;
+    this._baseAmbientIntensity = 0.5;
     this._smoothLevel = 0.85;
 
     /* ── Organic Smoothing & 3DoF Rotation ── */
@@ -473,15 +478,17 @@ export class Renderer {
                                  matName.includes('card') || nodeName.includes('fur');
 
             if (isFurOrCards) {
-              m.roughness = 0.85; // Pelos orgânicos e foscos
+              m.roughness = 0.90; // Pelos orgânicos e foscos
               m.metalness = 0.0;
               m.transparent = true;
-              m.alphaTest = 0.35; // Corte limpo de transparência dos cartões sem artefatos
+              // No Sketchfab, alphaTest em cartões de pelo/cabelo é baixo (0.05) para não decepar as pontas finas dos fios
+              m.alphaTest = 0.05;
               m.depthWrite = true; // Permite oclusão e profundidade correta sem ver através do corpo
               m.depthTest = true;
               m.alphaToCoverage = true;
               m.side = THREE.DoubleSide; // Ambas as faces visíveis em cartões 2D
               if (m.color) m.color.setHex(0xffffff);
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.25;
               return m;
             }
 
@@ -626,7 +633,8 @@ export class Renderer {
               m.metalness = 0.0;
               if (m.alphaMap) {
                 m.transparent = true;
-                m.alphaTest = 0.30;
+                // No Sketchfab, alphaTest em cartões de cabelo é baixo (0.05) para não decepar as pontas finas dos fios
+                m.alphaTest = 0.05;
                 m.depthWrite = true;
                 m.depthTest = true;
                 m.alphaToCoverage = true;
@@ -655,8 +663,8 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 7. Roupas, Casacos, Calças, Braços, Peito, Sapatos e Acessórios
-            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit') || matName.includes('coat') || matName.includes('arm') || matName.includes('chest') || matName.includes('trouser') || matName.includes('skirt') || matName.includes('shoe') || matName.includes('accessoire') || matName.includes('luggage') || matName.includes('tool')) {
+            // 7. Roupas, Casacos, Calças, Braços, Peito, Sapatos e Acessórios (excluindo pelos/fur)
+            else if (!matName.includes('fur') && !nodeName.includes('fur') && (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit') || matName.includes('coat') || matName.includes('arm') || matName.includes('chest') || matName.includes('trouser') || matName.includes('skirt') || matName.includes('shoe') || matName.includes('accessoire') || matName.includes('luggage') || matName.includes('tool'))) {
               m.roughness = m.roughnessMap ? 1.0 : 0.80; // Tecido fosco / PBR
               m.metalness = m.metalnessMap ? 1.0 : 0.0;
               m.transparent = false;
@@ -905,6 +913,7 @@ export class Renderer {
     // Apply currently active shading mode and texture visibility
     this.setShadingMode(this._currentShadingMode);
     this.setTexturesEnabled(this._showTextures);
+    this._applyLightingIntensities();
 
     this.resetCamera();
     console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 blendshapes`);
@@ -1031,73 +1040,73 @@ export class Renderer {
     switch (mode) {
       case 'sunset':
         this._keyLight.color.setHex(0xffaa44);
-        this._keyLight.intensity = 2.8;
+        this._baseKeyIntensity = 2.8;
         this._keyLight.position.set(2.5, 1.2, 1.8);
         this._fillLight.color.setHex(0x7040aa);
-        this._fillLight.intensity = 0.8;
+        this._baseFillIntensity = 0.8;
         this._fillLight.position.set(-2.0, 0.2, 1.0);
         this._rimLight.color.setHex(0xff6622);
-        this._rimLight.intensity = 1.4;
+        this._baseRimIntensity = 1.4;
         this._rimLight.position.set(0, 1.5, -2.0);
         this._ambientLight.color.setHex(0xffe0cc);
-        this._ambientLight.intensity = 0.45;
+        this._baseAmbientIntensity = 0.45;
         break;
 
       case 'cyber':
         this._keyLight.color.setHex(0x00f0ff);
-        this._keyLight.intensity = 2.4;
+        this._baseKeyIntensity = 2.4;
         this._keyLight.position.set(2.0, 1.5, 1.5);
         this._fillLight.color.setHex(0xff0077);
-        this._fillLight.intensity = 1.8;
+        this._baseFillIntensity = 1.8;
         this._fillLight.position.set(-2.0, 0.5, 1.5);
         this._rimLight.color.setHex(0x7700ff);
-        this._rimLight.intensity = 2.0;
+        this._baseRimIntensity = 2.0;
         this._rimLight.position.set(0, 1.5, -2.5);
         this._ambientLight.color.setHex(0x08041a);
-        this._ambientLight.intensity = 0.35;
+        this._baseAmbientIntensity = 0.35;
         break;
 
       case 'toon':
         this._keyLight.color.setHex(0xffffff);
-        this._keyLight.intensity = 2.4;
+        this._baseKeyIntensity = 2.4;
         this._keyLight.position.set(2.0, 2.0, 2.0);
         this._fillLight.color.setHex(0x99bbff);
-        this._fillLight.intensity = 0.5;
+        this._baseFillIntensity = 0.5;
         this._fillLight.position.set(-2.0, 0.5, 1.5);
         this._rimLight.color.setHex(0xffffff);
-        this._rimLight.intensity = 0.8;
+        this._baseRimIntensity = 0.8;
         this._rimLight.position.set(0, 1.0, -2.0);
         this._ambientLight.color.setHex(0xffffff);
-        this._ambientLight.intensity = 0.8;
+        this._baseAmbientIntensity = 0.8;
         break;
 
       case 'smooth':
         this._keyLight.color.setHex(0xfffaee);
-        this._keyLight.intensity = 1.4;
+        this._baseKeyIntensity = 1.4;
         this._keyLight.position.set(1.5, 1.8, 2.0);
         this._fillLight.color.setHex(0xffe4db);
-        this._fillLight.intensity = 1.0;
+        this._baseFillIntensity = 1.0;
         this._fillLight.position.set(-2.0, 0.5, 1.5);
         this._rimLight.color.setHex(0xffffff);
-        this._rimLight.intensity = 0.6;
+        this._baseRimIntensity = 0.6;
         this._rimLight.position.set(0, 1.0, -2.0);
         this._ambientLight.color.setHex(0xfff5f0);
-        this._ambientLight.intensity = 1.2;
+        this._baseAmbientIntensity = 1.2;
         break;
 
       case 'unreal':
         // Unreal Engine 5 Lumen / Cinematic Lighting setup matching UE5 studio portrait
         this._keyLight.color.setHex(0xfffaec);
-        this._keyLight.intensity = 3.0;
+        this._baseKeyIntensity = 3.0;
         this._keyLight.position.set(2.2, 2.6, 2.4);
         this._fillLight.color.setHex(0x94a3b8);
-        this._fillLight.intensity = 0.85;
+        this._baseFillIntensity = 0.85;
         this._fillLight.position.set(-2.4, 0.6, 1.8);
         this._rimLight.color.setHex(0x93c5fd);
-        this._rimLight.intensity = 2.0;
+        this._baseRimIntensity = 2.0;
         this._rimLight.position.set(0.4, 2.0, -2.6);
         this._ambientLight.color.setHex(0x1e293b);
-        this._ambientLight.intensity = 0.5;
+        this._baseAmbientIntensity = 0.5;
         if (this._scene) this._scene.environment = this._envMap;
         break;
 
@@ -1108,19 +1117,21 @@ export class Renderer {
       default:
         // Balanced Studio 3-point light
         this._keyLight.color.setHex(0xfff5e0);
-        this._keyLight.intensity = 2.0;
+        this._baseKeyIntensity = 2.0;
         this._keyLight.position.set(1.5, 2.0, 2.0);
         this._fillLight.color.setHex(0xd0e8ff);
-        this._fillLight.intensity = 1.0;
+        this._baseFillIntensity = 1.0;
         this._fillLight.position.set(-2.0, 0.5, 1.5);
         this._rimLight.color.setHex(0xaa88ff);
-        this._rimLight.intensity = 0.8;
+        this._baseRimIntensity = 0.8;
         this._rimLight.position.set(0, 1.0, -2.0);
         this._ambientLight.color.setHex(0xffffff);
-        this._ambientLight.intensity = 0.7;
+        this._baseAmbientIntensity = 0.7;
         if (this._scene) this._scene.environment = this._envMap;
         break;
     }
+
+    this._applyLightingIntensities();
 
     if (!this._model) return;
 
@@ -1287,6 +1298,52 @@ export class Renderer {
     this._lightAzimuth = Number(azimuthDeg);
     this._lightElevation = Number(elevationDeg);
     this._updateLightPosition();
+  }
+
+  /**
+   * Set overall lighting intensity multiplier (0.0 to 2.5).
+   * Controls directional lights, ambient light and environment IBL.
+   * @param {number} mult - 0.0 to 2.5
+   */
+  setLightingIntensity(mult) {
+    this._lightIntensity = Math.max(0, Number(mult));
+    this._applyLightingIntensities();
+  }
+
+  _applyLightingIntensities() {
+    const mult = this._lightIntensity;
+    if (this._keyLight) this._keyLight.intensity = this._baseKeyIntensity * mult;
+    if (this._fillLight) this._fillLight.intensity = this._baseFillIntensity * mult;
+    if (this._rimLight) this._rimLight.intensity = this._baseRimIntensity * mult;
+    if (this._ambientLight) this._ambientLight.intensity = this._baseAmbientIntensity * mult;
+
+    // Scale scene environment IBL and tone mapping exposure when lighting is lowered
+    if (this._scene) {
+      if (mult <= 0.001) {
+        this._scene.environment = null;
+      } else {
+        this._scene.environment = this._envMap;
+      }
+    }
+
+    if (this._model) {
+      this._model.traverse((node) => {
+        if (node.isMesh && node.material) {
+          const mats = Array.isArray(node.material) ? node.material : [node.material];
+          mats.forEach((m) => {
+            if (m.envMapIntensity !== undefined) {
+              if (m.userData && m.userData.baseEnvMapIntensity !== undefined) {
+                m.envMapIntensity = m.userData.baseEnvMapIntensity * mult;
+              } else {
+                m.userData = m.userData || {};
+                m.userData.baseEnvMapIntensity = m.envMapIntensity;
+                m.envMapIntensity = m.envMapIntensity * mult;
+              }
+            }
+          });
+        }
+      });
+    }
   }
 
   /**

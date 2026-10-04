@@ -443,8 +443,16 @@
             </button>
           </div>
 
-          <!-- Controles de Direção de Luz & Intensidade Suave -->
+          <!-- Controles de Intensidade, Direção de Luz & Suavidade -->
           <div class="shading-controls-group" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div class="slider-control-group">
+              <div class="slider-header">
+                <span class="slider-title">Intensidade da Iluminação</span>
+                <span class="slider-value" id="label-light-intensity">100%</span>
+              </div>
+              <input type="range" id="slider-light-intensity" min="0" max="250" value="100" step="5" class="apple-slider" />
+            </div>
+
             <div class="slider-control-group">
               <div class="slider-header">
                 <span class="slider-title">Ângulo da Luz (Azimute)</span>
@@ -931,6 +939,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261004_v11"></script>
+<script type="module" src="/js/main.js?v=20261004_v13"></script>
 </body>
 </html>

@@ -529,13 +529,25 @@ function setupShading() {
     });
   });
 
-  // Sliders de Direção de Luz e Suavidade
+  // Sliders de Intensidade, Direção de Luz e Suavidade
+  const sliderIntensity = document.getElementById('slider-light-intensity');
+  const labelIntensity = document.getElementById('label-light-intensity');
   const sliderAzimuth = $('slider-light-azimuth');
   const labelAzimuth = $('label-light-azimuth');
   const sliderElevation = $('slider-light-elevation');
   const labelElevation = $('label-light-elevation');
   const sliderSmooth = $('slider-smooth-level');
   const labelSmooth = $('label-smooth-level');
+
+  if (sliderIntensity && labelIntensity) {
+    sliderIntensity.addEventListener('input', (e) => {
+      const val = e.target.value;
+      labelIntensity.textContent = `${val}%`;
+      if (renderer) {
+        renderer.setLightingIntensity(Number(val) / 100);
+      }
+    });
+  }
 
   const updateLightDir = () => {
     if (renderer) {
@@ -1416,7 +1428,7 @@ function setupTimeline() {
   const modalExport = $('modal-export-menu');
   const btnCloseExportModal = $('btn-close-export-modal');
   const btnOpenExportTl = $('btn-tl-export-menu');
-  const btnOpenExportSide = $('btn-side-open-export-menu');
+  const btnOpenExportSide = document.getElementById('btn-side-open-export-menu');
 
   const openExportModal = () => {
     if (modalExport) modalExport.classList.add('open');
