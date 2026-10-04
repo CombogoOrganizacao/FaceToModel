@@ -621,47 +621,134 @@ function setupDragAndDrop() {
     dragCounter = 0;
     dropOverlay.classList.remove('active');
 
-    const files = Array.from(e.dataTransfer?.files || []);
-    if (files.length > 0) {
-      await handleUploadedFiles(files);
+    try {
+      const files = await extractFilesFromDataTransfer(e.dataTransfer);
+      if (files.length > 0) {
+        await handleUploadedFiles(files);
+      }
+    } catch (err) {
+      console.error('[main] Erro ao processar arquivos arrastados:', err);
+      const fallbackFiles = Array.from(e.dataTransfer?.files || []);
+      if (fallbackFiles.length > 0) {
+        await handleUploadedFiles(fallbackFiles);
+      }
     }
   });
 }
 
 /**
+ * Recursively extracts all files from DataTransfer, supporting nested folders and directories.
+ * @param {DataTransfer} dataTransfer
+ * @returns {Promise<File[]>}
+ */
+async function extractFilesFromDataTransfer(dataTransfer) {
+  if (!dataTransfer) return [];
+  const files = [];
+
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    const queue = [];
+    for (let i = 0; i < dataTransfer.items.length; i++) {
+      const item = dataTransfer.items[i];
+      if (typeof item.webkitGetAsEntry === "function") {
+        const entry = item.webkitGetAsEntry();
+        if (entry) queue.push(entry);
+      } else if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+
+    if (queue.length > 0) {
+      async function readEntry(entry) {
+        if (entry.isFile) {
+          return new Promise((resolve) => {
+            entry.file((file) => {
+              files.push(file);
+              resolve();
+            }, () => resolve());
+          });
+        } else if (entry.isDirectory) {
+          return new Promise((resolve) => {
+            const dirReader = entry.createReader();
+            function readBatch() {
+              dirReader.readEntries(async (entries) => {
+                if (entries.length === 0) {
+                  resolve();
+                } else {
+                  for (const child of entries) {
+                    await readEntry(child);
+                  }
+                  readBatch();
+                }
+              }, () => resolve());
+            }
+            readBatch();
+          });
+        }
+      }
+
+      for (const entry of queue) {
+        await readEntry(entry);
+      }
+    }
+  }
+
+  if (files.length === 0 && dataTransfer.files && dataTransfer.files.length > 0) {
+    return Array.from(dataTransfer.files);
+  }
+
+  return files;
+}
+
+/**
  * Handle a list of uploaded files (single model or model + textures/mtl).
+ * Supports .obj, .fbx, .glb, .gltf with automatic texture mapping and folder structures.
  * @param {File[]} files
  */
 async function handleUploadedFiles(files) {
-  // Find primary model file
+  // Find primary model file (.glb, .gltf, .fbx, .obj)
   const modelFile = files.find((f) => {
     const n = f.name.toLowerCase();
-    return n.endsWith('.glb') || n.endsWith('.gltf') || n.endsWith('.fbx') || n.endsWith('.obj');
+    return n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".fbx") || n.endsWith(".obj");
   });
 
   if (!modelFile) {
-    showToast('Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj) encontrado.', 'error');
+    showToast("Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj) encontrado.", "error");
     return;
   }
 
-  // Create asset map of object URLs for textures / mtl files
+  // Create asset map of object URLs for textures, .mtl and auxiliary files
   const assetMap = {};
   const urlsToRevoke = [];
 
   for (const f of files) {
     const objUrl = URL.createObjectURL(f);
     urlsToRevoke.push(objUrl);
+
+    // Exact filename
     assetMap[f.name] = objUrl;
     assetMap[f.name.toLowerCase()] = objUrl;
+
+    // Base name without relative path
+    const base = f.name.split("/").pop().split("\\").pop();
+    assetMap[base] = objUrl;
+    assetMap[base.toLowerCase()] = objUrl;
+
+    // WebKit relative path if dragged from folder
+    if (f.webkitRelativePath) {
+      assetMap[f.webkitRelativePath] = objUrl;
+      assetMap[f.webkitRelativePath.toLowerCase()] = objUrl;
+    }
   }
 
-  const modelUrl = assetMap[modelFile.name];
+  const modelUrl = assetMap[modelFile.name] || assetMap[modelFile.name.toLowerCase()];
+  showToast(`Carregando ${modelFile.name} com ${files.length - 1} arquivos auxiliares...`, "info");
   await loadModel(modelUrl, modelFile.name, assetMap);
 
-  // Revoke URLs after model has had time to parse and load textures into WebGL memory
+  // Revoke URLs after model and textures have been compiled to WebGL memory
   setTimeout(() => {
     urlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
-  }, 15000);
+  }, 45000);
 }
 
 /* ─── Local Webcam Tracking ───────────────────────────────────────────────── */

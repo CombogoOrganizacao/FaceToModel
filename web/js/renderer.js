@@ -192,9 +192,16 @@ export class Renderer {
     } else if (lowerName.endsWith('.obj')) {
       const loadingManager = new THREE.LoadingManager();
       loadingManager.setURLModifier((itemUrl) => {
-        const baseName = itemUrl.split('/').pop();
+        let clean = decodeURIComponent(itemUrl).replace(/\\/g, '/').replace(/['"]/g, '').trim();
+        const baseName = clean.split('/').pop();
         if (assetMap[baseName]) return assetMap[baseName];
         if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
+        const match = Object.keys(assetMap).find((k) => {
+          const lk = k.toLowerCase();
+          const lb = baseName.toLowerCase();
+          return lk === lb || lk.endsWith('/' + lb) || lb.endsWith('/' + lk);
+        });
+        if (match) return assetMap[match];
         return itemUrl;
       });
 
@@ -209,13 +216,63 @@ export class Renderer {
           objLoader.setMaterials(materials);
           model = await objLoader.loadAsync(url);
         } catch (mtlErr) {
-          console.warn('[Renderer] Não foi possível carregar o arquivo .mtl, usando fallback padrão:', mtlErr);
-          const objLoader = new OBJLoader(loadingManager);
-          model = await objLoader.loadAsync(url);
+          console.warn('[Renderer] Erro ao carregar arquivo .mtl, executando fallback com auto-bind:', mtlErr);
         }
-      } else {
+      }
+
+      if (!model) {
         const objLoader = new OBJLoader(loadingManager);
         model = await objLoader.loadAsync(url);
+      }
+
+      // Auto-bind de Texturas: se o modelo não tiver texturas aplicadas, vincular automaticamente imagens do assetMap
+      const imageKeys = Object.keys(assetMap).filter((k) => /\.(png|jpe?g|webp|bmp)$/i.test(k));
+      if (imageKeys.length > 0) {
+        let hasAnyMap = false;
+        model.traverse((node) => {
+          if (node.isMesh && node.material) {
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            if (mats.some((m) => Boolean(m.map))) hasAnyMap = true;
+          }
+        });
+
+        if (!hasAnyMap) {
+          console.log('[Renderer] Auto-bind inteligente: associando imagens arrastadas ao modelo .obj');
+          const texLoader = new THREE.TextureLoader();
+
+          const albedoKey = imageKeys.find((k) => /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(k)) ||
+                            (imageKeys.length === 1 ? imageKeys[0] : null);
+          const normalKey = imageKeys.find((k) => /(normal|norm|nrm)/i.test(k));
+          const roughnessKey = imageKeys.find((k) => /(roughness|rough)/i.test(k));
+          const metallicKey = imageKeys.find((k) => /(metallic|metalness|metal)/i.test(k));
+          const alphaKey = imageKeys.find((k) => /(opacity|alpha|mask)/i.test(k));
+
+          const albedoTex = albedoKey ? texLoader.load(assetMap[albedoKey]) : null;
+          if (albedoTex) albedoTex.colorSpace = THREE.SRGBColorSpace;
+
+          const normalTex = normalKey ? texLoader.load(assetMap[normalKey]) : null;
+          const roughnessTex = roughnessKey ? texLoader.load(assetMap[roughnessKey]) : null;
+          const metallicTex = metallicKey ? texLoader.load(assetMap[metallicKey]) : null;
+          const alphaTex = alphaKey ? texLoader.load(assetMap[alphaKey]) : null;
+
+          const pbrMat = new THREE.MeshStandardMaterial({
+            map: albedoTex,
+            normalMap: normalTex,
+            roughnessMap: roughnessTex,
+            metalnessMap: metallicTex,
+            alphaMap: alphaTex,
+            transparent: Boolean(alphaTex),
+            roughness: roughnessTex ? 1.0 : 0.6,
+            metalness: metallicTex ? 1.0 : 0.05,
+            side: THREE.DoubleSide,
+          });
+
+          model.traverse((node) => {
+            if (node.isMesh) {
+              node.material = pbrMat;
+            }
+          });
+        }
       }
     } else {
       // Standard GLTF / GLB loader with KTX2, DRACO and IndexedDB Binary Cache
@@ -274,28 +331,28 @@ export class Renderer {
             }
             // 2. Fios de Cabelo do MetaHuman (CardsMesh no padrão Unreal Engine 5.8 / Marschner Dual-Lobe)
             else if (isMetaHuman && (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow')))) {
-              // Extrair mapa alpha com precisão dos recortes de fios originais
-              const originalMap = m.map || null;
-              const alphaMask = this._synthesizeAlphaFromTexture(originalMap, true);
+              // Conectar Atlas de Micro-Fios Procedurais com Cutícula e Tapering
+              const hairGroom = this._createProceduralHairStrands();
+              const originalNormal = m.normalMap || null;
 
               const hairMat = new THREE.MeshPhysicalMaterial({
-                color: originalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x1a120d),
-                map: originalMap,
-                alphaMap: alphaMask,
-                normalMap: m.normalMap || null,
-                roughness: 0.35, // Fibra suave e sedosa de queratina
+                color: new THREE.Color(0x281c14), // Base de melanina espresso profunda e quente
+                map: hairGroom.map,
+                alphaMap: hairGroom.alphaMap,
+                normalMap: originalNormal,
+                roughness: 0.32, // Fibra suave e sedosa de queratina
                 metalness: 0.0,  // Estritamente não metálico
-                clearcoat: 0.45, // Lobo R primário: cutícula superficial nítida
-                clearcoatRoughness: 0.22,
-                specularIntensity: 0.85, // Especularidade nítida dos fios
-                specularColor: new THREE.Color(0x9d6c48), // Reflexo secundário TRT córtex
-                anisotropy: 0.88, // Anisotropia acentuada ao longo da extensão das fibras
+                clearcoat: 0.55, // Lobo R primário: cutícula superficial nítida
+                clearcoatRoughness: 0.18,
+                specularIntensity: 0.95, // Especularidade nítida dos fios
+                specularColor: new THREE.Color(0xb5825a), // Reflexo secundário TRT córtex com calor de melanina
+                anisotropy: 0.92, // Anisotropia acentuada ao longo da extensão das fibras
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.70, // Dispersão de luz transmitida interna entre os fios
-                sheenColor: new THREE.Color(0x422615),
-                sheenRoughness: 0.32,
+                sheen: 0.85, // Dispersão de luz transmitida interna entre os fios
+                sheenColor: new THREE.Color(0x52321c),
+                sheenRoughness: 0.28,
                 transparent: true,
-                alphaTest: 0.03, // Preserva volume e densidade total dos fios sem recorte excessivo
+                alphaTest: 0.08, // Recorte fino anti-aliasing preservando 100% da volumetria
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
@@ -310,34 +367,33 @@ export class Renderer {
                   `#include <roughnessmap_fragment>
                   // Procedural micro-strand normal shift along hair fibers
                   vec2 strandCoord = vUv * vec2(240.0, 1.0);
-                  float strandSheen = sin(strandCoord.x * 3.14159) * 0.06;
-                  roughnessFactor = clamp(roughnessFactor + strandSheen, 0.18, 0.62);
+                  float strandSheen = sin(strandCoord.x * 3.14159) * 0.08;
+                  roughnessFactor = clamp(roughnessFactor + strandSheen, 0.18, 0.60);
                   `
                 );
               };
 
-              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.55;
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.60;
               return hairMat;
             }
-            // 3. Sobrancelhas do MetaHuman (CardsMesh — Alpha Synthesized + Feathering + PolygonOffset)
+            // 3. Sobrancelhas do MetaHuman (CardsMesh — Procedural Micro-Strand Atlas + PolygonOffset)
             else if (isMetaHuman && matName.includes('eyebrow')) {
-              const originalMap = m.map || null;
-              const alphaMask = this._synthesizeAlphaFromTexture(originalMap, true);
+              const browGroom = this._createProceduralEyebrowTextures();
 
               const browMat = new THREE.MeshPhysicalMaterial({
-                color: originalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x160f0a),
-                map: originalMap,
-                alphaMap: alphaMask,
-                roughness: 0.38,
+                color: new THREE.Color(0x1a120c),
+                map: browGroom.map,
+                alphaMap: browGroom.alphaMap,
+                roughness: 0.36,
                 metalness: 0.0,
-                specularIntensity: 0.65,
-                specularColor: new THREE.Color(0x5c3b24),
-                anisotropy: 0.75,
+                specularIntensity: 0.70,
+                specularColor: new THREE.Color(0x6e482e),
+                anisotropy: 0.80,
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.45,
-                sheenColor: new THREE.Color(0x381f10),
+                sheen: 0.50,
+                sheenColor: new THREE.Color(0x3e2314),
                 transparent: true,
-                alphaTest: 0.03,
+                alphaTest: 0.06,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -347,7 +403,7 @@ export class Renderer {
                 side: THREE.DoubleSide,
                 name: m.name,
               });
-              if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.45;
+              if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.50;
               return browMat;
             }
             // 4. Cílios do MetaHuman (SKM_bo_FaceMesh.001_LashMat / SKM_asha_FaceMesh.001_LashMat — Fios Tapered com Alpha Atlas)
@@ -1391,11 +1447,13 @@ export class Renderer {
     const colorTex = new THREE.CanvasTexture(colorCanvas);
     colorTex.wrapS = THREE.RepeatWrapping;
     colorTex.wrapT = THREE.RepeatWrapping;
+    colorTex.flipY = false;
     colorTex.needsUpdate = true;
 
     const alphaTex = new THREE.CanvasTexture(alphaCanvas);
     alphaTex.wrapS = THREE.RepeatWrapping;
     alphaTex.wrapT = THREE.RepeatWrapping;
+    alphaTex.flipY = false;
     alphaTex.needsUpdate = true;
 
     this._cachedHairStrandTextures = { map: colorTex, alphaMap: alphaTex };
