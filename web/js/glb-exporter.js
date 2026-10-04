@@ -498,6 +498,7 @@ export function exportCurvesJSON({
  * @param {THREE.AnimationClip} options.animationClip - The generated animation clip
  * @param {string} [options.filename] - Output file name
  * @param {boolean} [options.preserveViewerTransforms] - Whether to keep viewport scale/offsets (default false)
+ * @param {boolean} [options.download] - Whether to automatically trigger browser download (default true)
  * @returns {Promise<Blob>}
  */
 export function exportModelToGLB({
@@ -505,6 +506,7 @@ export function exportModelToGLB({
   animationClip,
   filename = 'facetomodel_animation.glb',
   preserveViewerTransforms = false,
+  download = true,
 }) {
   return new Promise((resolve, reject) => {
     const exporter = new GLTFExporter();
@@ -596,28 +598,32 @@ export function exportModelToGLB({
 
         if (result instanceof ArrayBuffer) {
           const blob = new Blob([result], { type: 'model/gltf-binary' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setTimeout(() => URL.revokeObjectURL(url), 15000);
-          console.log(`[glb-exporter] GLB exportado com sucesso: ${filename} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+          if (download) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 15000);
+            console.log(`[glb-exporter] GLB exportado com sucesso: ${filename} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
+          }
           resolve(blob);
         } else {
           // JSON fallback if not binary
           const output = JSON.stringify(result, null, 2);
           const blob = new Blob([output], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = filename.replace('.glb', '.gltf');
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setTimeout(() => URL.revokeObjectURL(url), 15000);
+          if (download) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename.replace('.glb', '.gltf');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 15000);
+          }
           resolve(blob);
         }
       },
@@ -629,5 +635,59 @@ export function exportModelToGLB({
       options
     );
   });
+}
+
+/**
+ * Exports the 3D model with embedded AnimationClip to Autodesk FBX format via the local Blender microservice.
+ *
+ * @param {Object} options
+ * @param {THREE.Object3D} options.model - The 3D model scene
+ * @param {THREE.AnimationClip} options.animationClip - The generated animation clip
+ * @param {string} [options.filename] - Output file name (.fbx)
+ * @returns {Promise<Blob>}
+ */
+export async function exportModelToFBX({
+  model,
+  animationClip,
+  filename = 'facetomodel_animation.fbx',
+}) {
+  // 1. Generate clean GLB binary in memory without triggering automatic download
+  const glbBlob = await exportModelToGLB({
+    model,
+    animationClip,
+    filename: filename.replace(/\.fbx$/i, '.glb'),
+    download: false,
+  });
+
+  console.log(`[glb-exporter] Enviando GLB (${(glbBlob.size / 1024 / 1024).toFixed(2)} MB) para conversão FBX via Blender Headless...`);
+
+  const response = await fetch('/api/convert-to-fbx', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'model/gltf-binary',
+    },
+    body: glbBlob,
+  });
+
+  if (!response.ok) {
+    let errMsg = `Falha na conversão (status ${response.status})`;
+    try {
+      const errJson = await response.json();
+      errMsg = errJson.error || errMsg;
+    } catch (_) {}
+    throw new Error(errMsg);
+  }
+
+  const fbxBlob = await response.blob();
+  const url = URL.createObjectURL(fbxBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+  console.log(`[glb-exporter] FBX exportado com sucesso: ${filename} (${(fbxBlob.size / 1024 / 1024).toFixed(2)} MB)`);
+  return fbxBlob;
 }
 

@@ -21,7 +21,7 @@ import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
 import { MotionTimeline } from './motion-timeline.js';
 import { GlassesFilter } from './glasses-filter.js';
-import { exportModelToGLB, buildAnimationClip, exportCurvesCSV, exportCurvesJSON } from './glb-exporter.js';
+import { exportModelToGLB, buildAnimationClip, exportCurvesCSV, exportCurvesJSON, exportModelToFBX } from './glb-exporter.js';
 import { ExpressionControls, EXPRESSION_CATEGORIES } from './expression-controls.js';
 import { ensureModelBlendshapes } from './blendshape-synthesizer.js';
 import { buildModelMap } from './blendshape-mapper.js';
@@ -1117,12 +1117,81 @@ function setupTimeline() {
     }
   };
 
+  const exportFBXAction = async (triggerBtn = null) => {
+    if (!motionTimeline || motionTimeline.frames.length < 2) {
+      showToast('Grave movimentos na timeline antes de exportar o modelo 3D.', 'info');
+      return;
+    }
+    if (!renderer || !renderer.getModel()) {
+      showToast('Nenhum modelo 3D carregado para exportação.', 'error');
+      return;
+    }
+
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.style.opacity = '0.5';
+      triggerBtn.style.pointerEvents = 'none';
+    }
+    showToast('Convertendo animação 3D para FBX via Blender Headless...', 'info');
+
+    try {
+      const model = renderer.getInnerModel();
+      const modelMap = renderer.getModelMap();
+      const headBone = renderer.getHeadBone();
+      const neckBone = renderer.getNeckBone();
+      const headAttachments = renderer.getHeadAttachments();
+
+      const animationClip = buildAnimationClip({
+        frames: motionTimeline.frames,
+        trimIn: motionTimeline.trimIn,
+        trimOut: motionTimeline.trimOut,
+        model: model,
+        modelMap: modelMap,
+        headBone: headBone,
+        neckBone: neckBone,
+        headAttachments: headAttachments,
+        clipName: 'FaceToModel_MotionTake'
+      });
+
+      if (!animationClip) {
+        showToast('Nenhuma faixa de movimento detectada para exportar.', 'error');
+        return;
+      }
+
+      const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'modelo_3d';
+      const filename = `${baseName}_animado.fbx`;
+
+      await exportModelToFBX({
+        model: model,
+        animationClip: animationClip,
+        filename: filename
+      });
+
+      showToast(`Modelo FBX exportado com sucesso: ${filename}`, 'success');
+    } catch (err) {
+      console.error('[main] Erro na exportação do modelo FBX:', err);
+      showToast('Erro ao exportar FBX: ' + err.message, 'error');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.style.opacity = '';
+        triggerBtn.style.pointerEvents = '';
+      }
+    }
+  };
+
   // Botões de Exportação na Timeline e no Drawer Lateral
   const btnExportGLB = $('btn-tl-export-glb');
   if (btnExportGLB) btnExportGLB.addEventListener('click', () => exportGLBAction(btnExportGLB));
 
   const btnSideExportGLB = document.getElementById('btn-side-export-glb');
   if (btnSideExportGLB) btnSideExportGLB.addEventListener('click', () => exportGLBAction(btnSideExportGLB));
+
+  const btnExportFBX = document.getElementById('btn-tl-export-fbx');
+  if (btnExportFBX) btnExportFBX.addEventListener('click', () => exportFBXAction(btnExportFBX));
+
+  const btnSideExportFBX = document.getElementById('btn-side-export-fbx');
+  if (btnSideExportFBX) btnSideExportFBX.addEventListener('click', () => exportFBXAction(btnSideExportFBX));
 
   const btnExportCSV = $('btn-tl-export-csv');
   if (btnExportCSV) btnExportCSV.addEventListener('click', exportCSVAction);

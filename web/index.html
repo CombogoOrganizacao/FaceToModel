@@ -170,6 +170,13 @@
           </svg>
         </button>
 
+        <button class="tl-action-btn secondary" id="btn-tl-export-fbx" title="Exportar Modelo 3D (.fbx) com Animação (via Blender Headless)" aria-label="Exportar FBX">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 8h5M7 12h3M7 16h5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+          </svg>
+        </button>
+
         <button class="tl-action-btn secondary" id="btn-tl-export-csv" title="Exportar Curvas em CSV (Unreal Engine Live Link Face)" aria-label="Exportar Unreal Live Link CSV">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -351,6 +358,30 @@
             </p>
             <button class="btn-apple" id="btn-side-export-glb" style="font-size: 11px; padding: 6px 10px; justify-content: center; background: rgba(16, 185, 129, 0.25); border: 0.5px solid rgba(16, 185, 129, 0.5); color: #fff;">
               Exportar Modelo GLB Animado
+            </button>
+          </div>
+
+          <!-- Autodesk FBX via Blender Headless -->
+          <div class="card-row" style="margin-bottom: 8px; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; border: 0.5px solid var(--border-divider);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="row-icon-box orange" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M7 8h5M7 12h3M7 16h5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style="font-size: 12px; font-weight: 600; color: #fff;">Autodesk FBX (via Blender)</div>
+                  <div style="font-size: 10px; color: var(--label-secondary);">Unity, Unreal, Maya e 3ds Max</div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--label-secondary); margin: 0; line-height: 1.35;">
+              Conversão de alta fidelidade para FBX 7.4 binário com armatures, morph targets e ações de animação assadas via Blender Headless local.
+            </p>
+            <button class="btn-apple" id="btn-side-export-fbx" style="font-size: 11px; padding: 6px 10px; justify-content: center; background: rgba(249, 115, 22, 0.25); border: 0.5px solid rgba(249, 115, 22, 0.5); color: #fff;">
+              Exportar Modelo FBX Animado
             </button>
           </div>
 
@@ -808,6 +839,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261004_v6"></script>
+<script type="module" src="/js/main.js?v=20261004_v7"></script>
 </body>
 </html>

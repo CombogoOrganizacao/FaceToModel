@@ -78,6 +78,100 @@ app.get('/api/info', (_req, res) => {
   });
 });
 
+// Helper to discover Blender executable path on host system
+function findBlenderPath() {
+  if (process.env.BLENDER_PATH && fs.existsSync(process.env.BLENDER_PATH)) {
+    return process.env.BLENDER_PATH;
+  }
+  const standardLocations = [
+    '/Volumes/SSD FN501 PRO/Applications/Blender.app/Contents/MacOS/Blender',
+    '/Applications/Blender.app/Contents/MacOS/Blender',
+    path.join(require('os').homedir(), 'Applications', 'Blender.app', 'Contents', 'MacOS', 'Blender'),
+  ];
+  for (const loc of standardLocations) {
+    if (fs.existsSync(loc)) return loc;
+  }
+  try {
+    const which = require('child_process').execSync('which blender', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+    if (which && fs.existsSync(which)) return which;
+  } catch (_) {}
+  return null;
+}
+
+// Endpoint para verificar status do Blender Headless
+app.get('/api/blender-status', (_req, res) => {
+  const blender = findBlenderPath();
+  res.json({
+    available: Boolean(blender),
+    path: blender || null
+  });
+});
+
+// Microserviço: Conversão de GLB Animado para FBX via Blender Headless
+app.post('/api/convert-to-fbx', express.raw({ type: ['model/gltf-binary', 'application/octet-stream', 'application/json', '*/*'], limit: '200mb' }), async (req, res) => {
+  const blenderPath = findBlenderPath();
+  if (!blenderPath) {
+    return res.status(503).json({
+      error: 'Blender não foi encontrado no servidor local.',
+      hint: 'Instale o Blender ou configure a variável BLENDER_PATH.'
+    });
+  }
+
+  const scriptPath = path.resolve(__dirname, 'scripts', 'glb_to_fbx.py');
+  if (!fs.existsSync(scriptPath)) {
+    return res.status(500).json({ error: 'Script glb_to_fbx.py não encontrado no servidor.' });
+  }
+
+  const bodyBuffer = req.body;
+  if (!bodyBuffer || bodyBuffer.length === 0) {
+    return res.status(400).json({ error: 'Nenhum dado binário de GLB recebido.' });
+  }
+
+  const os = require('os');
+  const tmpId = `f2m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const inputGlb = path.join(os.tmpdir(), `${tmpId}.glb`);
+  const outputFbx = path.join(os.tmpdir(), `${tmpId}.fbx`);
+
+  try {
+    await fs.promises.writeFile(inputGlb, bodyBuffer);
+
+    await new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+      const proc = spawn(blenderPath, ['-b', '-P', scriptPath, '--', inputGlb, outputFbx], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let errOutput = '';
+      proc.stderr.on('data', (d) => { errOutput += d.toString(); });
+      proc.stdout.on('data', (d) => {
+        const str = d.toString();
+        if (str.includes('[Blender FBX]')) {
+          console.log(`[FBX Microservice] ${str.trim()}`);
+        }
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0 && fs.existsSync(outputFbx)) {
+          resolve();
+        } else {
+          reject(new Error(`Conversão no Blender falhou (código ${code}). ${errOutput.slice(-300)}`));
+        }
+      });
+    });
+
+    const fbxBuffer = await fs.promises.readFile(outputFbx);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="facetomodel_animation.fbx"');
+    res.send(fbxBuffer);
+  } catch (err) {
+    console.error('[server] Erro na conversão GLB -> FBX:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    try { if (fs.existsSync(inputGlb)) fs.unlinkSync(inputGlb); } catch (_) {}
+    try { if (fs.existsSync(outputFbx)) fs.unlinkSync(outputFbx); } catch (_) {}
+  }
+});
+
 // Catch-all → index.html (SPA support)
 app.get('*', (_req, res) => {
   res.sendFile(path.join(WEB_DIR, 'index.html'));
