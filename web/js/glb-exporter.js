@@ -182,6 +182,11 @@ export function buildAnimationClip({
         const meshName = mesh.name;
         if (!meshName) return;
 
+        // If mesh is already a direct child of headBone, it naturally inherits bone rotation!
+        if (mesh.parent === headBone) {
+          return;
+        }
+
         const posTrackValues = new Float32Array(numKeyframes * 3);
         const rotTrackValues = new Float32Array(numKeyframes * 4);
 
@@ -213,7 +218,12 @@ export function buildAnimationClip({
             headBone.scale
           );
 
-          targetWorldMat.multiplyMatrices(headMat, att.relativeMatrix);
+          if (att.relativeMatrix) {
+            targetWorldMat.multiplyMatrices(headMat, att.relativeMatrix);
+          } else {
+            targetWorldMat.copy(headMat);
+          }
+
           if (mesh.parent) {
             invParentWorld.copy(mesh.parent.matrixWorld).invert();
             targetLocalMat.multiplyMatrices(invParentWorld, targetWorldMat);

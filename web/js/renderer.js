@@ -234,6 +234,22 @@ export class Renderer {
       }
     }
 
+    // Detect if model is MetaHuman Bo or Epic Games MetaHuman avatar
+    let isMetaHuman = false;
+    model.traverse((node) => {
+      const nName = (node.name || '').toLowerCase();
+      const mName = (node.material?.name || '').toLowerCase();
+      if (
+        nName.includes('skm_bo_') ||
+        nName.includes('sidesweptfringe') ||
+        mName.includes('cardsmesh') ||
+        mName.includes('lashmat') ||
+        mName.includes('face_skin_baked')
+      ) {
+        isMetaHuman = true;
+      }
+    });
+
     // Ensure all materials are double-sided, properly sorted for alpha blending, and skin/eyes/hair rendered with Unreal Engine realistic PBR
     model.traverse((node) => {
       if (node.isMesh) {
@@ -254,27 +270,30 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 2. Fios de Cabelo do MetaHuman (Strand-Based Groom Shader no padrão Unreal Engine 5.8 / Marschner Dual-Lobe)
-            else if (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow'))) {
-              const strandGroom = this._createProceduralHairStrands();
+            // 2. Fios de Cabelo do MetaHuman (CardsMesh no padrão Unreal Engine 5.8 / Marschner Dual-Lobe)
+            else if (isMetaHuman && (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow')))) {
+              // Extrair mapa alpha com precisão dos recortes de fios originais
+              const originalMap = m.map || null;
+              const alphaMask = this._synthesizeAlphaFromTexture(originalMap, true);
+
               const hairMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x1a120d), // Base melanin espresso rica da Unreal Engine (#1a120d)
-                map: strandGroom.map,
-                alphaMap: strandGroom.alphaMap,
+                color: new THREE.Color(0x1a120d), // Base melanin espresso profunda da Unreal Engine (#1a120d)
+                map: originalMap,
+                alphaMap: alphaMask,
                 normalMap: m.normalMap || null,
-                roughness: 0.28, // Fibra suave de queratina
-                metalness: 0.0,
-                clearcoat: 0.45, // Lobo R primário: cutícula superficial nítida e translúcida
-                clearcoatRoughness: 0.18,
-                specularIntensity: 0.95, // Especularidade nítida dos fios
+                roughness: 0.32, // Fibra suave de queratina
+                metalness: 0.0,  // Estritamente não metálico
+                clearcoat: 0.35, // Lobo R primário: cutícula superficial nítida
+                clearcoatRoughness: 0.22,
+                specularIntensity: 0.90, // Especularidade nítida dos fios
                 specularColor: new THREE.Color(0x9d6c48), // Reflexo secundário TRT córtex
-                anisotropy: 0.92, // Anisotropia acentuada ao longo da extensão das fibras
+                anisotropy: 0.88, // Anisotropia acentuada ao longo da extensão das fibras
                 anisotropyRotation: Math.PI / 2,
-                sheen: 0.85, // Dispersão de luz transmitida interna entre os fios
+                sheen: 0.80, // Dispersão de luz transmitida interna entre os fios
                 sheenColor: new THREE.Color(0x422615),
-                sheenRoughness: 0.30,
+                sheenRoughness: 0.32,
                 transparent: true,
-                alphaTest: 0.12,
+                alphaTest: 0.08, // Recorte anti-aliased fino sem blocos sólidos
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
@@ -298,23 +317,25 @@ export class Renderer {
               if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.50;
               return hairMat;
             }
-            // 3. Sobrancelhas (Eyebrows — Procedural Micro-Strand Texture + Anisotropia + PolygonOffset)
-            else if (matName.includes('eyebrow')) {
-              const browGroom = this._createProceduralEyebrowTextures();
+            // 3. Sobrancelhas do MetaHuman (CardsMesh — Alpha Synthesized + Feathering + PolygonOffset)
+            else if (isMetaHuman && matName.includes('eyebrow')) {
+              const originalMap = m.map || null;
+              const alphaMask = this._synthesizeAlphaFromTexture(originalMap, true);
+
               const browMat = new THREE.MeshPhysicalMaterial({
                 color: new THREE.Color(0x160f0a),
-                map: browGroom.map,
-                alphaMap: browGroom.alphaMap,
-                roughness: 0.32,
+                map: originalMap,
+                alphaMap: alphaMask,
+                roughness: 0.35,
                 metalness: 0.0,
                 specularIntensity: 0.65,
                 specularColor: new THREE.Color(0x5c3b24),
-                anisotropy: 0.80,
+                anisotropy: 0.75,
                 anisotropyRotation: Math.PI / 2,
                 sheen: 0.45,
                 sheenColor: new THREE.Color(0x381f10),
                 transparent: true,
-                alphaTest: 0.10,
+                alphaTest: 0.08,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -327,22 +348,19 @@ export class Renderer {
               if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.45;
               return browMat;
             }
-            // 4. Cílios (Eyelashes / LashMat — UE 5.8 Vertex Color Root-to-Tip Tapering)
-            else if (matName.includes('eyelashes') || matName.includes('lashmat')) {
+            // 4. Cílios do MetaHuman (SKM_bo_FaceMesh.001_LashMat — Fios Delgados em Leque com Vertex Colors)
+            else if (isMetaHuman && (matName.includes('eyelashes') || matName.includes('lashmat'))) {
               const hasVertexColor = Boolean(node.geometry && node.geometry.attributes && node.geometry.attributes.color);
-              const lashTex = this._createProceduralEyelashTextures();
               const lashMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x100b08), // Tom ébano natural profundo
-                map: lashTex.map,
-                alphaMap: lashTex.alphaMap,
-                roughness: 0.25, // Fios hidratados com brilho delicado
+                color: new THREE.Color(0x120c09), // Tom ébano natural profundo
+                roughness: 0.28, // Fios hidratados com brilho delicado
                 metalness: 0.0,
-                specularIntensity: 0.75,
-                specularColor: new THREE.Color(0x604533),
-                sheen: 0.40,
+                specularIntensity: 0.70,
+                specularColor: new THREE.Color(0x503525),
+                sheen: 0.35,
                 sheenColor: new THREE.Color(0x281910),
                 transparent: true,
-                alphaTest: 0.14,
+                alphaTest: 0.05,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -354,20 +372,33 @@ export class Renderer {
                 name: m.name,
               });
 
-              // Tapering e gradiente raiz-ponta do MetaHuman
+              // Tapering e gradiente raiz-ponta suave do MetaHuman
               lashMat.onBeforeCompile = (shader) => {
                 shader.fragmentShader = shader.fragmentShader.replace(
                   '#include <alphamap_fragment>',
                   `#include <alphamap_fragment>
                   // Soft root-to-tip tapering curve
-                  float tipTaper = smoothstep(0.0, 0.92, 1.0 - abs(vUv.y - 0.5) * 1.8);
-                  diffuseColor.a *= clamp(tipTaper, 0.1, 1.0);
+                  float tipTaper = smoothstep(0.0, 0.95, 1.0 - abs(vUv.y - 0.5) * 1.6);
+                  diffuseColor.a *= clamp(tipTaper, 0.15, 1.0);
                   `
                 );
               };
 
               if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.55;
               return lashMat;
+            }
+            // 5. Cabelos de Personagens Estilizados, Anime e Outros Avatares (Wolf3D_Hair, etc.)
+            else if (matName.includes('hair') || matName.includes('cabelo')) {
+              // Estritamente dielétrico, fosco natural e preservando a textura de cor original
+              m.roughness = 0.78; // Cabelo fosco estilizado (não-metálico)
+              m.metalness = 0.0;  // Zero metal
+              if (m.clearcoat !== undefined) m.clearcoat = 0.0;
+              if (m.specularIntensity !== undefined) m.specularIntensity = 0.25;
+              if (m.specularColor !== undefined) m.specularColor.setHex(0x111111);
+              if (m.anisotropy !== undefined) m.anisotropy = 0.0;
+              if (m.sheen !== undefined) m.sheen = 0.0;
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.40;
+              return m;
             }
             // 5. Roupas e Tecidos
             else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit')) {
@@ -509,14 +540,14 @@ export class Renderer {
     this._neckBone = neckBone;
     this._isFullBody = isFullBody;
 
-    // Head Attachments: Detect non-skinned meshes attached to the head (hair, eyebrows, scalp, beard, accessories)
-    // so they rigidly follow the skeletal head bone rotation instead of remaining static.
+    // Head Attachments: Directly reparent non-skinned head meshes (hair, eyebrows, beard, scalp)
+    // to the head bone so Three.js transforms them rigidly and natively with the skull at 60 FPS
     this._headAttachments = [];
     if (headBone) {
-      // Force update of world matrices in rest pose
+      // Force world matrices update before reparenting
       model.updateMatrixWorld(true);
-      const invHeadWorld = new THREE.Matrix4().copy(headBone.matrixWorld).invert();
 
+      const meshesToReparent = [];
       model.traverse((node) => {
         if (node.isMesh && !node.isSkinnedMesh) {
           const nName = (node.name || '').toLowerCase();
@@ -525,14 +556,40 @@ export class Renderer {
                              /(hair|eyebrow|beard|mustache|eyelash|scalp)/i.test(mName);
 
           if (isHeadPart) {
-            // Compute transform of mesh relative to head bone at rest pose
-            const relativeMatrix = new THREE.Matrix4().multiplyMatrices(invHeadWorld, node.matrixWorld);
-            this._headAttachments.push({
-              mesh: node,
-              relativeMatrix: relativeMatrix,
-              originalParent: node.parent
-            });
-            console.log(`[Renderer] Fixação Dinâmica de Cabeça ativada: "${node.name}" vinculada ao osso "${headBone.name}"`);
+            meshesToReparent.push(node);
+          }
+        }
+      });
+
+      meshesToReparent.forEach((mesh) => {
+        // Calculate world transform of mesh relative to headBone
+        headBone.attach(mesh);
+        this._headAttachments.push({
+          mesh: mesh,
+          originalParent: mesh.parent
+        });
+        console.log(`[Renderer] Fixação Física Direta: "${mesh.name}" ancorado ao osso "${headBone.name}"`);
+      });
+
+      // Synchronize all skeletal head bones across multi-skin models (FaceMesh, Outfits, BodyMesh)
+      this._allHeadBones = [];
+      this._allNeckBones = [];
+      model.traverse((node) => {
+        if (node.isBone) {
+          const bName = node.name || '';
+          if (headRegex.test(bName) && !isExcluded(bName)) {
+            if (!this._allHeadBones.includes(node)) {
+              node.userData.restEuler = node.rotation.clone();
+              node.userData.restQuaternion = node.quaternion.clone();
+              this._allHeadBones.push(node);
+            }
+          }
+          if (neckRegex.test(bName) && !isExcluded(bName)) {
+            if (!this._allNeckBones.includes(node)) {
+              node.userData.restEuler = node.rotation.clone();
+              node.userData.restQuaternion = node.quaternion.clone();
+              this._allNeckBones.push(node);
+            }
           }
         }
       });
@@ -961,29 +1018,39 @@ export class Renderer {
       // Keep root model / body completely fixed and stationary
       this._model.rotation.set(0, 0, 0);
 
-      if (this._neckBone) {
+      const headBones = this._allHeadBones && this._allHeadBones.length > 0 ? this._allHeadBones : [this._headBone];
+      const neckBones = this._allNeckBones && this._allNeckBones.length > 0 ? this._allNeckBones : (this._neckBone ? [this._neckBone] : []);
+
+      if (neckBones.length > 0) {
         // Natural organic distribution: 25% on neck, 75% on head
         const neckRot = new THREE.Euler(rx * 0.25, ry * 0.25, rz * 0.25, 'YXZ');
         const neckDeltaQ = new THREE.Quaternion().setFromEuler(neckRot);
-        this._neckBone.quaternion.copy(this._neckBone.userData.restQuaternion).multiply(neckDeltaQ);
+        neckBones.forEach((b) => {
+          const restQ = b.userData.restQuaternion || b.quaternion;
+          b.quaternion.copy(restQ).multiply(neckDeltaQ);
+        });
 
         const headRot = new THREE.Euler(rx * 0.75, ry * 0.75, rz * 0.75, 'YXZ');
         const headDeltaQ = new THREE.Quaternion().setFromEuler(headRot);
-        this._headBone.quaternion.copy(this._headBone.userData.restQuaternion).multiply(headDeltaQ);
+        headBones.forEach((b) => {
+          const restQ = b.userData.restQuaternion || b.quaternion;
+          b.quaternion.copy(restQ).multiply(headDeltaQ);
+        });
       } else {
-        // 100% on head bone
+        // 100% on head bones
         const headRot = new THREE.Euler(rx, ry, rz, 'YXZ');
         const headDeltaQ = new THREE.Quaternion().setFromEuler(headRot);
-        this._headBone.quaternion.copy(this._headBone.userData.restQuaternion).multiply(headDeltaQ);
+        headBones.forEach((b) => {
+          const restQ = b.userData.restQuaternion || b.quaternion;
+          b.quaternion.copy(restQ).multiply(headDeltaQ);
+        });
       }
 
-      // Update world matrix of bones
+      // Update world matrix of all bones
       this._headBone.updateMatrixWorld(true);
 
-      // Synchronize all rigid head attachments (Hair, Eyebrows, Scalp, Facial Hair)
-      // with subtle organic inertia and strand physics on hair cards (Niagara / Hair Groom physics feel)
+      // Organic hair sway physics for hair attachments (now attached directly to head bone)
       if (this._headAttachments && this._headAttachments.length > 0) {
-        // Compute delta velocity for hair inertia sway
         const dPitch = rx - (this._prevHeadPitch || 0);
         const dYaw = ry - (this._prevHeadYaw || 0);
         const dRoll = rz - (this._prevHeadRoll || 0);
@@ -992,14 +1059,13 @@ export class Renderer {
         this._prevHeadYaw = ry;
         this._prevHeadRoll = rz;
 
-        // Spring-damper physics accumulator for hair
         if (!this._hairSway) this._hairSway = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
         const springK = 0.22;
         const damping = 0.72;
 
-        this._hairSway.vx = (this._hairSway.vx + (-dPitch * 0.35) - this._hairSway.x * springK) * damping;
-        this._hairSway.vy = (this._hairSway.vy + (-dYaw * 0.40) - this._hairSway.y * springK) * damping;
-        this._hairSway.vz = (this._hairSway.vz + (-dRoll * 0.35) - this._hairSway.z * springK) * damping;
+        this._hairSway.vx = (this._hairSway.vx + (-dPitch * 0.20) - this._hairSway.x * springK) * damping;
+        this._hairSway.vy = (this._hairSway.vy + (-dYaw * 0.25) - this._hairSway.y * springK) * damping;
+        this._hairSway.vz = (this._hairSway.vz + (-dRoll * 0.20) - this._hairSway.z * springK) * damping;
 
         this._hairSway.x += this._hairSway.vx;
         this._hairSway.y += this._hairSway.vy;
@@ -1011,29 +1077,15 @@ export class Renderer {
         for (let i = 0; i < this._headAttachments.length; i++) {
           const att = this._headAttachments[i];
           const mesh = att.mesh;
-          const parent = mesh.parent;
-          if (!parent) continue;
-
           const isHair = (mesh.name || '').toLowerCase().includes('hair');
 
-          // Target world matrix = HeadBone world matrix * Relative rest matrix
-          const targetWorldMatrix = new THREE.Matrix4().multiplyMatrices(
-            this._headBone.matrixWorld,
-            att.relativeMatrix
-          );
-
-          // Apply hair sway inertia around head pivot
           if (isHair) {
-            targetWorldMatrix.multiply(new THREE.Matrix4().makeRotationFromQuaternion(hairInertiaQ));
+            if (!mesh.userData.restRotation) {
+              mesh.userData.restRotation = mesh.rotation.clone();
+              mesh.userData.restQuaternion = mesh.quaternion.clone();
+            }
+            mesh.quaternion.copy(mesh.userData.restQuaternion).multiply(hairInertiaQ);
           }
-
-          // Convert to local space of mesh parent: L = inv(ParentWorld) * TargetWorld
-          const invParentWorld = new THREE.Matrix4().copy(parent.matrixWorld).invert();
-          const targetLocalMatrix = new THREE.Matrix4().multiplyMatrices(invParentWorld, targetWorldMatrix);
-
-          // Decompose into position, quaternion, scale
-          targetLocalMatrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
-          mesh.updateMatrix();
         }
       }
     } else if (!this._isFullBody) {
@@ -1214,34 +1266,32 @@ export class Renderer {
       const data = imgData.data;
       const len = data.length;
 
-      // Detect background color by sampling the 4 corners of the texture
-      const cornerR = (data[0] + data[(width - 1) * 4] + data[(height - 1) * width * 4] + data[len - 4]) / 4;
-      const cornerG = (data[1] + data[(width - 1) * 4 + 1] + data[(height - 1) * width * 4 + 1] + data[len - 3]) / 4;
-      const cornerB = (data[2] + data[(width - 1) * 4 + 2] + data[(height - 1) * width * 4 + 2] + data[len - 2]) / 4;
+      // MetaHuman baked cards: Background is solid brown #34281d RGB(52, 40, 29)
+      // Strands/cutouts are dark/black fibers RGB(0, 0, 0)
+      const bgR = 52.0;
+      const bgG = 40.0;
+      const bgB = 29.0;
 
-      const isCornerBrightBg = cornerR > 25 || cornerG > 25 || cornerB > 20;
-
-      // Extract strand luminance and generate crisp antialiased alpha
       for (let i = 0; i < len; i += 4) {
         const r = data[i];
         const g = data[i + 1];
         const b = data[i + 2];
 
-        if (isHairCard && isCornerBrightBg) {
-          // MetaHuman hair card texture: background is solid brown ~RGB(52, 40, 29)
-          // Hair strands are dark/translucent cuts. Distance from background color defines the strand alpha.
-          const diffR = Math.abs(r - cornerR);
-          const diffG = Math.abs(g - cornerG);
-          const diffB = Math.abs(b - cornerB);
+        if (isHairCard) {
+          const diffR = Math.abs(r - bgR);
+          const diffG = Math.abs(g - bgG);
+          const diffB = Math.abs(b - bgB);
           const dist = (diffR + diffG + diffB) / 3.0;
 
           if (dist < 4.0) {
+            // Background area: fully transparent
             data[i] = 0;
             data[i + 1] = 0;
             data[i + 2] = 0;
             data[i + 3] = 0;
           } else {
-            const alphaVal = Math.min(255, Math.round((dist / 32.0) * 255));
+            // Fine strand fiber: opaque with anti-aliasing transition
+            const alphaVal = Math.min(255, Math.round((dist / 22.0) * 255));
             data[i] = alphaVal;
             data[i + 1] = alphaVal;
             data[i + 2] = alphaVal;
@@ -1269,8 +1319,8 @@ export class Renderer {
       ctx.putImageData(imgData, 0, 0);
 
       const alphaMap = new THREE.CanvasTexture(canvas);
-      alphaMap.wrapS = texture.wrapS;
-      alphaMap.wrapT = texture.wrapT;
+      alphaMap.wrapS = texture.wrapS || THREE.RepeatWrapping;
+      alphaMap.wrapT = texture.wrapT || THREE.RepeatWrapping;
       alphaMap.flipY = texture.flipY;
       alphaMap.needsUpdate = true;
 
