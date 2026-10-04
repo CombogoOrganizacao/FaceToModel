@@ -489,6 +489,10 @@ export function analyzeHeadRegion(mesh, headBone = null) {
 
   let headMinY, headMaxY;
 
+  const meshName = (mesh.name || '').toLowerCase();
+  const isDedicatedHeadMesh = /(head|face|cabeça|rosto|head_mesh|facemesh|head_geo)/i.test(meshName) && !/(body|corpo|torso|full)/i.test(meshName);
+  const isHeadSized = fullHeight < 0.85;
+
   if (headBone) {
     const boneWorldPos = new THREE.Vector3();
     headBone.getWorldPosition(boneWorldPos);
@@ -496,8 +500,13 @@ export function analyzeHeadRegion(mesh, headBone = null) {
     const radius = fullHeight * 0.12;
     headMinY = boneLocalPos.y - radius * 0.6;
     headMaxY = boneLocalPos.y + radius * 1.2;
+  } else if (isDedicatedHeadMesh || isHeadSized) {
+    // Malha dedicada de cabeça/rosto ou busto: utiliza a extensão vertical completa da cabeça
+    headMinY = box.min.y;
+    headMaxY = box.max.y;
   } else {
-    // Slice vertex analysis across the top 45% of the model to locate neck constriction
+    // Modelo de corpo inteiro unificado (monolítico com corpo, pernas e pés):
+    // Análise de fatiamento vertical nos 45% superiores para localizar a constrição do pescoço
     const numSlices = 24;
     const sliceMinY = box.min.y + fullHeight * 0.55;
     const sliceMaxY = box.max.y;
@@ -515,7 +524,7 @@ export function analyzeHeadRegion(mesh, headBone = null) {
       }
     }
 
-    // Find local minimum width in lower half of the sampled top region (the neck)
+    // Encontra a largura mínima local na metade inferior da região amostrada (o pescoço)
     let neckSlice = -1;
     let minW = Infinity;
     for (let s = 1; s < Math.floor(numSlices * 0.5); s++) {
@@ -525,20 +534,12 @@ export function analyzeHeadRegion(mesh, headBone = null) {
       }
     }
 
-    // Check if shoulders widen significantly below the neck
-    const shouldersWide = sliceWidths[0] > minW * 1.35;
-    const isFullBodyOrBust = (fullHeight > fullWidth * 1.2) || shouldersWide;
-
-    if (isFullBodyOrBust && neckSlice > 0) {
+    if (neckSlice > 0) {
       headMinY = sliceMinY + neckSlice * sliceStep;
       headMaxY = box.max.y;
-    } else if (isFullBodyOrBust) {
-      // Fallback: top 18% of character represents head and face
-      headMinY = box.min.y + fullHeight * 0.82;
-      headMaxY = box.max.y;
     } else {
-      // Standalone head / bust mesh
-      headMinY = box.min.y;
+      // Fallback: 18% superiores do personagem para cabeça e face
+      headMinY = box.min.y + fullHeight * 0.82;
       headMaxY = box.max.y;
     }
   }
@@ -643,6 +644,11 @@ export function synthesizeARKitBlendshapes(mesh, options = {}) {
   if (!geom.morphAttributes.position) geom.morphAttributes.position = [];
   if (!mesh.morphTargetDictionary) mesh.morphTargetDictionary = {};
 
+  // CRITICAL: Three.js morph targets for additive rigging MUST be marked relative!
+  // If morphTargetsRelative is not true, Three.js treats them as absolute positions
+  // and multiplies base vertices by (1 - sum_influences), causing the head to collapse/detach!
+  geom.morphTargetsRelative = true;
+
   let addedCount = 0;
 
   // Loop through all 52 canonical standard shapes
@@ -741,6 +747,7 @@ export function rebuildModelBlendshapes(model, options = {}) {
     geom.morphAttributes.position = [];
   }
   faceMesh.morphTargetDictionary = {};
+  geom.morphTargetsRelative = true;
 
   return synthesizeARKitBlendshapes(faceMesh, options);
 }

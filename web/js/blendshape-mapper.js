@@ -259,6 +259,9 @@ export function buildModelMap(model) {
 
   model.traverse((node) => {
     if (node.isMesh && node.morphTargetDictionary) {
+      if (node.geometry) {
+        node.geometry.morphTargetsRelative = true;
+      }
       morphMeshes.push({ mesh: node, dict: node.morphTargetDictionary });
     }
   });

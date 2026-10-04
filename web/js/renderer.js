@@ -221,6 +221,18 @@ export class Renderer {
           return lk === lb || lk === lc || lk.endsWith('/' + lb) || lc.endsWith('/' + lk) || lk.endsWith('/' + lc) || lc.endsWith(lk);
         });
         if (match) return assetMap[match];
+
+        // 4. Token-based matching (e.g. "Head_Normal.jpeg" -> "Head_withpaint_Normal.jpeg")
+        const baseNoExt = baseName.replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+        const tokens = baseNoExt.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+        if (tokens.length >= 2) {
+          const tokenMatch = Object.keys(assetMap).find((k) => {
+            const lk = k.toLowerCase();
+            return tokens.every((t) => lk.includes(t));
+          });
+          if (tokenMatch) return assetMap[tokenMatch];
+        }
+
         return itemUrl;
       });
 
@@ -403,18 +415,76 @@ export class Renderer {
 
           const mats = Array.isArray(node.material) ? node.material : [node.material];
           const newMats = mats.map((m) => {
+            const matName = (m.name || '').toLowerCase();
+            const nodeName = (node.name || '').toLowerCase();
+
+            // 0. Converter materiais legados Phong (criados pelo MTLLoader do .obj) para PBR MeshStandardMaterial
+            // com busca inteligente de mapas de Roughness, Metallic, Normal e Opacity no assetMap
+            if (m.isMeshPhongMaterial) {
+              const baseMap = m.map;
+              if (baseMap) baseMap.colorSpace = THREE.SRGBColorSpace;
+
+              let normalMap = m.normalMap || m.bumpMap;
+              let alphaMap = m.alphaMap;
+              let roughnessMap = null;
+              let metallicMap = null;
+
+              if (assetMap && Object.keys(assetMap).length > 0) {
+                const texLoader = new THREE.TextureLoader();
+                const cleanMatName = matName.replace(/[^a-z0-9]/g, '');
+                const cleanNodeName = nodeName.replace(/[^a-z0-9]/g, '');
+
+                const findMap = (pattern) => {
+                  const matchKey = Object.keys(assetMap).find((k) => {
+                    const lk = k.toLowerCase();
+                    if (!pattern.test(lk)) return false;
+                    const cleanK = lk.replace(/[^a-z0-9]/g, '');
+                    return (cleanMatName.length >= 3 && cleanK.includes(cleanMatName)) ||
+                           (cleanNodeName.length >= 3 && cleanK.includes(cleanNodeName));
+                  });
+                  return matchKey ? texLoader.load(assetMap[matchKey]) : null;
+                };
+
+                roughnessMap = findMap(/(roughness|rough|ns)/i);
+                metallicMap = findMap(/(metallic|metal|refl)/i);
+                if (!normalMap) normalMap = findMap(/(normal|norm|nrm|bump)/i);
+                if (!alphaMap) alphaMap = findMap(/(opacity|alpha|mask)/i);
+              }
+
+              m = new THREE.MeshStandardMaterial({
+                name: m.name,
+                color: new THREE.Color(0xffffff),
+                map: baseMap,
+                normalMap: normalMap,
+                roughnessMap: roughnessMap,
+                metalnessMap: metallicMap,
+                alphaMap: alphaMap,
+                roughness: roughnessMap ? 1.0 : 0.65,
+                metalness: metallicMap ? 1.0 : 0.05,
+                transparent: Boolean(alphaMap || m.transparent),
+                side: THREE.DoubleSide,
+              });
+            }
+
             m.side = THREE.DoubleSide;
 
-            const matName = (m.name || '').toLowerCase();
+            // 1. Pelos de Roupas, Cartões de Pelugem e Pelos Sintéticos (Sketchfab & Unreal PBR Standard)
+            const isFurOrCards = matName.includes('fur') || matName.includes('pelo') ||
+                                 matName.includes('card') || nodeName.includes('fur');
 
-            // 1. Pele / Cabeça / Corpo do MetaHuman e Avatares PBR
-            if (matName.includes('head_shader') || matName.includes('body_mi') || matName.includes('skin') || matName.includes('face')) {
-              m.roughness = 0.58; // Rugosidade natural de pele humana (micro-textura)
+            if (isFurOrCards) {
+              m.roughness = 0.85; // Pelos orgânicos e foscos
               m.metalness = 0.0;
-              if (m.specularIntensity !== undefined) m.specularIntensity = 0.35;
-              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
+              m.transparent = true;
+              m.alphaTest = 0.35; // Corte limpo de transparência dos cartões sem artefatos
+              m.depthWrite = true; // Permite oclusão e profundidade correta sem ver através do corpo
+              m.depthTest = true;
+              m.alphaToCoverage = true;
+              m.side = THREE.DoubleSide; // Ambas as faces visíveis em cartões 2D
+              if (m.color) m.color.setHex(0xffffff);
               return m;
             }
+
             // 2. Fios de Cabelo do MetaHuman (CardsMesh no padrão Unreal Engine Groom Cards)
             else if (isMetaHuman && (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow')))) {
               const originalNormal = m.normalMap || null;
@@ -550,33 +620,62 @@ export class Renderer {
               if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.55;
               return lashMat;
             }
-            // 5. Cabelos de Personagens Estilizados, Anime e Outros Avatares (Wolf3D_Hair, etc.)
-            else if (matName.includes('hair') || matName.includes('cabelo')) {
-              // Estritamente dielétrico, fosco natural e preservando a textura de cor original
-              m.roughness = 0.78; // Cabelo fosco estilizado (não-metálico)
-              m.metalness = 0.0;  // Zero metal
+            // 5. Cabelos de Personagens Estilizados e Gerais (Winter Girl, etc.)
+            else if (matName.includes('hair') || matName.includes('cabelo') || nodeName.includes('hair')) {
+              m.roughness = 0.75; // Cabelo fosco estilizado (não-metálico)
+              m.metalness = 0.0;
+              if (m.alphaMap) {
+                m.transparent = true;
+                m.alphaTest = 0.30;
+                m.depthWrite = true;
+                m.depthTest = true;
+                m.alphaToCoverage = true;
+              }
+              m.side = THREE.DoubleSide;
               if (m.clearcoat !== undefined) m.clearcoat = 0.0;
               if (m.specularIntensity !== undefined) m.specularIntensity = 0.25;
               if (m.specularColor !== undefined) m.specularColor.setHex(0x111111);
               if (m.anisotropy !== undefined) m.anisotropy = 0.0;
               if (m.sheen !== undefined) m.sheen = 0.0;
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.40;
+              if (m.color) m.color.setHex(0xffffff);
               return m;
             }
-            // 5. Roupas e Tecidos
-            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit')) {
-              m.roughness = 0.85; // Tecido fosco
+            // 6. Pele / Cabeça / Corpo do MetaHuman e Avatares PBR
+            else if (matName.includes('head_shader') || matName.includes('body_mi') || matName.includes('skin') || matName.includes('face') || matName.includes('head') || nodeName === 'head') {
+              m.roughness = 0.58; // Rugosidade natural de pele humana (micro-textura)
               m.metalness = 0.0;
-              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.2;
+              // A pele do crânio é sólida: garante gravação de profundidade e remove transparência acidental
+              m.transparent = false;
+              m.depthWrite = true;
+              m.depthTest = true;
+              m.side = THREE.DoubleSide;
+              if (m.color) m.color.setHex(0xffffff);
+              if (m.specularIntensity !== undefined) m.specularIntensity = 0.35;
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 6. Dentes e Boca
+            // 7. Roupas, Casacos, Calças, Braços, Peito, Sapatos e Acessórios
+            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit') || matName.includes('coat') || matName.includes('arm') || matName.includes('chest') || matName.includes('trouser') || matName.includes('skirt') || matName.includes('shoe') || matName.includes('accessoire') || matName.includes('luggage') || matName.includes('tool')) {
+              m.roughness = m.roughnessMap ? 1.0 : 0.80; // Tecido fosco / PBR
+              m.metalness = m.metalnessMap ? 1.0 : 0.0;
+              m.transparent = false;
+              m.depthWrite = true;
+              m.depthTest = true;
+              m.side = THREE.DoubleSide;
+              if (m.color) m.color.setHex(0xffffff);
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.3;
+              return m;
+            }
+            // 8. Dentes e Boca
             else if (matName.includes('teeth')) {
               m.roughness = 0.28;
               m.metalness = 0.0;
+              m.depthWrite = true;
+              m.side = THREE.DoubleSide;
               return m;
             }
-            // 7. Camadas Oclusoras dos Olhos / Hidden Shells (desativar para não cobrir o globo ocular)
+            // 9. Camadas Oclusoras dos Olhos / Hidden Shells (desativar para não cobrir o globo ocular)
             else if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage') || matName.includes('m_hide') || matName.includes('lacrimal')) {
               m.transparent = true;
               m.opacity = 0.0;
@@ -584,17 +683,24 @@ export class Renderer {
               m.visible = false;
               return m;
             }
-            // 8. Globo Ocular / Íris / Esclera
-            else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball') || matName.includes('eyel_baked') || matName.includes('eyer_baked')) {
+            // 10. Globo Ocular / Íris / Esclera
+            else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball') || matName.includes('eyel_baked') || matName.includes('eyer_baked') || matName.includes('eye') || nodeName === 'eyes') {
               m.roughness = 0.12; // Córnea nítida com reflexo especular equilibrado
               m.metalness = 0.0;
               m.transparent = false;
               m.opacity = 1.0;
               m.depthWrite = true;
+              m.depthTest = true;
+              m.side = THREE.DoubleSide;
               if (m.color) m.color.setHex(0xffffff);
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.2;
               return m;
             }
+
+            m.side = THREE.DoubleSide;
+            m.depthWrite = true;
+            m.depthTest = true;
+            if (m.color) m.color.setHex(0xffffff);
             return m;
           });
 
@@ -684,6 +790,7 @@ export class Renderer {
       if (node.isMesh && node.geometry && node.geometry.morphAttributes) {
         const morphPos = node.geometry.morphAttributes.position;
         if (morphPos && morphPos.length > 0) {
+          node.geometry.morphTargetsRelative = true;
           if (!node.morphTargetInfluences || !Array.isArray(node.morphTargetInfluences)) {
             if (typeof node.updateMorphTargets === 'function') {
               node.updateMorphTargets();
@@ -851,6 +958,7 @@ export class Renderer {
         if (node.isMesh && node.geometry && node.geometry.morphAttributes) {
           const morphPos = node.geometry.morphAttributes.position;
           if (morphPos && morphPos.length > 0) {
+            node.geometry.morphTargetsRelative = true;
             if (typeof node.updateMorphTargets === 'function') {
               node.updateMorphTargets();
             } else {
