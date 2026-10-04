@@ -434,7 +434,7 @@ function setupAutoRigControls() {
         </svg>
         Parar Teste
       `;
-      showToast('Iniciando ciclo de teste procedural ARKit (5 segundos)...', 'info');
+      showToast('Iniciando ciclo de teste procedural das 52 expressões (5 segundos)...', 'info');
 
       const startTime = performance.now();
       const durationMs = 5000;
