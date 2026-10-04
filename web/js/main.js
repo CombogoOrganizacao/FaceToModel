@@ -922,6 +922,33 @@ async function extractFilesFromDataTransfer(dataTransfer) {
  * @param {File[]} files
  */
 async function handleUploadedFiles(files) {
+  // Se foi enviado um arquivo .zip (ex: baixado direto do Sketchfab), descompacta automaticamente
+  const zipFile = files.find((f) => f.name.toLowerCase().endsWith(".zip"));
+  if (zipFile && window.JSZip) {
+    showToast("Descompactando arquivo ZIP do Sketchfab...", "info");
+    try {
+      const zip = await window.JSZip.loadAsync(zipFile);
+      const extractedFiles = [];
+      const entries = Object.keys(zip.files);
+      for (const entryName of entries) {
+        const entry = zip.files[entryName];
+        if (!entry.dir) {
+          const blob = await entry.async("blob");
+          const f = new File([blob], entryName.split("/").pop(), { type: blob.type });
+          f.filepath = entryName;
+          extractedFiles.push(f);
+        }
+      }
+      if (extractedFiles.length > 0) {
+        return handleUploadedFiles(extractedFiles);
+      }
+    } catch (zipErr) {
+      console.warn("[main] Erro ao descompactar ZIP:", zipErr);
+      showToast("Erro ao abrir arquivo ZIP: " + zipErr.message, "error");
+      return;
+    }
+  }
+
   // Find primary model file (.glb, .gltf, .fbx, .obj)
   const modelFile = files.find((f) => {
     const n = f.name.toLowerCase();
@@ -1092,8 +1119,8 @@ function runLocalLoop() {
         const pitch = Math.atan2(m[6], m[10]);
         const yaw   = Math.atan2(-m[2], Math.sqrt(m[6] * m[6] + m[10] * m[10]));
         const roll  = Math.atan2(m[1], m[0]);
-        // Pitch calibrado: inclinar para baixo olha para baixo, para cima olha para cima
-        rotation = { pitch: pitch * 0.85, yaw: yaw * 0.85, roll: -roll * 0.85 };
+        // Pitch, Yaw e Roll calibrados em modo espelho natural (não invertido)
+        rotation = { pitch: pitch * 0.85, yaw: -yaw * 0.85, roll: roll * 0.85 };
       }
 
       if (motionTimeline && motionTimeline.isRecording && !motionTimeline.isPaused) {

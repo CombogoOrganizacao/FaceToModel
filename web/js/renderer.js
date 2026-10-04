@@ -57,6 +57,52 @@ function calibrateTexture(tex, isColorMap = false) {
   return tex;
 }
 
+/**
+ * Creates a robust THREE.LoadingManager that intercepts all relative and subfolder paths,
+ * resolving them against the assetMap of uploaded/dropped files.
+ * @param {Record<string, string>} assetMap
+ * @returns {THREE.LoadingManager}
+ */
+function createLoadingManagerWithAssetMap(assetMap = {}) {
+  const loadingManager = new THREE.LoadingManager();
+  loadingManager.setURLModifier((itemUrl) => {
+    let clean = decodeURIComponent(itemUrl).replace(/\\/g, '/').replace(/['"]/g, '').trim();
+    clean = clean.replace(/^blob:[^/]+\/\/[^/]+\/[0-9a-f-]+\//i, '');
+    clean = clean.replace(/^blob:[^/]+\/\/[^/]+\//i, '');
+    clean = clean.replace(/^https?:\/\/[^/]+\//i, '');
+    clean = clean.replace(/^[a-zA-Z]:\/?/i, '');
+    clean = clean.replace(/^(\.\/|\/)+/, '');
+
+    const baseName = clean.split('/').pop();
+
+    if (assetMap[clean]) return assetMap[clean];
+    if (assetMap[clean.toLowerCase()]) return assetMap[clean.toLowerCase()];
+    if (assetMap[baseName]) return assetMap[baseName];
+    if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
+
+    const match = Object.keys(assetMap).find((k) => {
+      const lk = k.toLowerCase();
+      const lb = baseName.toLowerCase();
+      const lc = clean.toLowerCase();
+      return lk === lb || lk === lc || lk.endsWith('/' + lb) || lc.endsWith('/' + lk) || lk.endsWith('/' + lc) || lc.endsWith(lk);
+    });
+    if (match) return assetMap[match];
+
+    const baseNoExt = baseName.replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+    const tokens = baseNoExt.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+    if (tokens.length >= 2) {
+      const tokenMatch = Object.keys(assetMap).find((k) => {
+        const lk = k.toLowerCase();
+        return tokens.every((t) => lk.includes(t));
+      });
+      if (tokenMatch) return assetMap[tokenMatch];
+    }
+
+    return itemUrl;
+  });
+  return loadingManager;
+}
+
 /* ─── Renderer ──────────────────────────────────────────────────── */
 
 export class Renderer {
@@ -206,64 +252,12 @@ export class Renderer {
 
     let model;
 
+    const loadingManager = createLoadingManagerWithAssetMap(assetMap);
+
     if (lowerName.endsWith('.fbx')) {
-      const fbxLoader = new FBXLoader();
-      const loadingManager = new THREE.LoadingManager();
-      loadingManager.setURLModifier((itemUrl) => {
-        const baseName = itemUrl.split('/').pop();
-        if (assetMap[baseName]) return assetMap[baseName];
-        if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
-        return itemUrl;
-      });
-      fbxLoader.manager = loadingManager;
+      const fbxLoader = new FBXLoader(loadingManager);
       model = await fbxLoader.loadAsync(url);
     } else if (lowerName.endsWith('.obj')) {
-      const loadingManager = new THREE.LoadingManager();
-      loadingManager.setURLModifier((itemUrl) => {
-        let clean = decodeURIComponent(itemUrl).replace(/\\/g, '/').replace(/['"]/g, '').trim();
-        // Remove blob origin if present e.g. "blob:http://localhost:3000/UUID/" or "blob:http://localhost:3000/"
-        clean = clean.replace(/^blob:[^/]+\/\/[^/]+\/[0-9a-f-]+\//i, '');
-        clean = clean.replace(/^blob:[^/]+\/\/[^/]+\//i, '');
-        // Remove http(s) origin if present
-        clean = clean.replace(/^https?:\/\/[^/]+\//i, '');
-        // Remove Windows drive letters e.g. "C:/" or "D:/"
-        clean = clean.replace(/^[a-zA-Z]:\/?/i, '');
-        // Remove leading slashes or dot-slashes
-        clean = clean.replace(/^(\.\/|\/)+/, '');
-
-        const baseName = clean.split('/').pop();
-
-        // 1. Direct match on clean path
-        if (assetMap[clean]) return assetMap[clean];
-        if (assetMap[clean.toLowerCase()]) return assetMap[clean.toLowerCase()];
-
-        // 2. Direct match on basename
-        if (assetMap[baseName]) return assetMap[baseName];
-        if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
-
-        // 3. Match by suffix / endsWith or includes
-        const match = Object.keys(assetMap).find((k) => {
-          const lk = k.toLowerCase();
-          const lb = baseName.toLowerCase();
-          const lc = clean.toLowerCase();
-          return lk === lb || lk === lc || lk.endsWith('/' + lb) || lc.endsWith('/' + lk) || lk.endsWith('/' + lc) || lc.endsWith(lk);
-        });
-        if (match) return assetMap[match];
-
-        // 4. Token-based matching (e.g. "Head_Normal.jpeg" -> "Head_withpaint_Normal.jpeg")
-        const baseNoExt = baseName.replace(/\.[a-z0-9]+$/i, '').toLowerCase();
-        const tokens = baseNoExt.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
-        if (tokens.length >= 2) {
-          const tokenMatch = Object.keys(assetMap).find((k) => {
-            const lk = k.toLowerCase();
-            return tokens.every((t) => lk.includes(t));
-          });
-          if (tokenMatch) return assetMap[tokenMatch];
-        }
-
-        return itemUrl;
-      });
-
       // Check if there is an accompanying .mtl file
       const mtlKey = Object.keys(assetMap).find((k) => k.toLowerCase().endsWith('.mtl'));
       if (mtlKey) {
@@ -398,6 +392,7 @@ export class Renderer {
       }
     } else {
       // Standard GLTF / GLB loader with KTX2, DRACO and IndexedDB Binary Cache
+      this._loader.manager = loadingManager;
       if (url.startsWith('blob:') || url.startsWith('data:')) {
         const gltf = await this._loader.loadAsync(url, onProgress ? (xhr) => {
           if (xhr.lengthComputable) {
@@ -467,6 +462,39 @@ export class Renderer {
               calibrateTexture(m.clearcoatRoughnessMap, false);
               calibrateTexture(m.transmissionMap, false);
               calibrateTexture(m.sheenColorMap, true);
+
+              // 1.1 Se o material não tiver albedo ou alphaMap vinculados, buscar texturas correspondentes no assetMap
+              if (assetMap && Object.keys(assetMap).length > 0) {
+                const texLoader = new THREE.TextureLoader();
+                const cleanMatName = matName.replace(/[^a-z0-9]/g, '');
+                const cleanNodeName = nodeName.replace(/[^a-z0-9]/g, '');
+
+                if (!m.map) {
+                  const albedoKey = Object.keys(assetMap).find((k) => {
+                    const lk = k.toLowerCase();
+                    if (!/(diffuse|albedo|basecolor|base_color|color|col)/i.test(lk)) return false;
+                    const cleanK = lk.replace(/[^a-z0-9]/g, '');
+                    return (cleanMatName.length >= 3 && cleanK.includes(cleanMatName)) ||
+                           (cleanNodeName.length >= 3 && cleanK.includes(cleanNodeName));
+                  });
+                  if (albedoKey) {
+                    m.map = calibrateTexture(texLoader.load(assetMap[albedoKey]), true);
+                  }
+                }
+
+                if (!m.alphaMap) {
+                  const alphaKey = Object.keys(assetMap).find((k) => {
+                    const lk = k.toLowerCase();
+                    if (!/(opacity|alpha|mask)/i.test(lk)) return false;
+                    const cleanK = lk.replace(/[^a-z0-9]/g, '');
+                    return (cleanMatName.length >= 3 && cleanK.includes(cleanMatName)) ||
+                           (cleanNodeName.length >= 3 && cleanK.includes(cleanNodeName));
+                  });
+                  if (alphaKey) {
+                    m.alphaMap = calibrateTexture(texLoader.load(assetMap[alphaKey]), false);
+                  }
+                }
+              }
 
               // 2. Camadas oclusoras de olhos / esclera oculta
               const isEyeShell = matName.includes('eyeshell') || matName.includes('eyeedge') ||
@@ -1033,17 +1061,20 @@ export class Renderer {
         console.log(`[Renderer] Fixação Física Direta: "${mesh.name}" ancorado ao osso "${headBone.name}"`);
       });
 
-      // Synchronize all skeletal head bones across multi-skin models (FaceMesh, Outfits, BodyMesh)
+      // Synchronize all skeletal head bones across multi-skin models (FaceMesh, Outfits, BodyMesh, MetaHuman Facial Rig)
       this._allHeadBones = [];
       this._allNeckBones = [];
       model.traverse((node) => {
         if (node.isBone) {
           const bName = node.name || '';
-          if (headRegex.test(bName) && !isExcluded(bName)) {
+          const isFacialRoot = /(facial_c_facialroot|facialroot)/i.test(bName);
+          const isHead = (headRegex.test(bName) || isFacialRoot) && (!isExcluded(bName) || isFacialRoot);
+          if (isHead) {
             if (!this._allHeadBones.includes(node)) {
               node.userData.restEuler = node.rotation.clone();
               node.userData.restQuaternion = node.quaternion.clone();
               this._allHeadBones.push(node);
+              console.log(`[Renderer] Sincronização Craniana: osso "${bName}" vinculado à rotação da cabeça`);
             }
           }
           if (neckRegex.test(bName) && !isExcluded(bName)) {
@@ -1630,35 +1661,6 @@ export class Renderer {
         this._prevHeadPitch = rx;
         this._prevHeadYaw = ry;
         this._prevHeadRoll = rz;
-
-        if (!this._hairSway) this._hairSway = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
-        const springK = 0.22;
-        const damping = 0.72;
-
-        this._hairSway.vx = (this._hairSway.vx + (-dPitch * 0.20) - this._hairSway.x * springK) * damping;
-        this._hairSway.vy = (this._hairSway.vy + (-dYaw * 0.25) - this._hairSway.y * springK) * damping;
-        this._hairSway.vz = (this._hairSway.vz + (-dRoll * 0.20) - this._hairSway.z * springK) * damping;
-
-        this._hairSway.x += this._hairSway.vx;
-        this._hairSway.y += this._hairSway.vy;
-        this._hairSway.z += this._hairSway.vz;
-
-        const hairInertiaEuler = new THREE.Euler(this._hairSway.x, this._hairSway.y, this._hairSway.z, 'YXZ');
-        const hairInertiaQ = new THREE.Quaternion().setFromEuler(hairInertiaEuler);
-
-        for (let i = 0; i < this._headAttachments.length; i++) {
-          const att = this._headAttachments[i];
-          const mesh = att.mesh;
-          const isHair = (mesh.name || '').toLowerCase().includes('hair');
-
-          if (isHair) {
-            if (!mesh.userData.restRotation) {
-              mesh.userData.restRotation = mesh.rotation.clone();
-              mesh.userData.restQuaternion = mesh.quaternion.clone();
-            }
-            mesh.quaternion.copy(mesh.userData.restQuaternion).multiply(hairInertiaQ);
-          }
-        }
       }
     } else if (!this._isFullBody) {
       // Standalone head/face mesh without skeletal bones: rotate the pivot
