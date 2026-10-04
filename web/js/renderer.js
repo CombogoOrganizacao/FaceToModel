@@ -193,13 +193,32 @@ export class Renderer {
       const loadingManager = new THREE.LoadingManager();
       loadingManager.setURLModifier((itemUrl) => {
         let clean = decodeURIComponent(itemUrl).replace(/\\/g, '/').replace(/['"]/g, '').trim();
+        // Remove blob origin if present e.g. "blob:http://localhost:3000/UUID/" or "blob:http://localhost:3000/"
+        clean = clean.replace(/^blob:[^/]+\/\/[^/]+\/[0-9a-f-]+\//i, '');
+        clean = clean.replace(/^blob:[^/]+\/\/[^/]+\//i, '');
+        // Remove http(s) origin if present
+        clean = clean.replace(/^https?:\/\/[^/]+\//i, '');
+        // Remove Windows drive letters e.g. "C:/" or "D:/"
+        clean = clean.replace(/^[a-zA-Z]:\/?/i, '');
+        // Remove leading slashes or dot-slashes
+        clean = clean.replace(/^(\.\/|\/)+/, '');
+
         const baseName = clean.split('/').pop();
+
+        // 1. Direct match on clean path
+        if (assetMap[clean]) return assetMap[clean];
+        if (assetMap[clean.toLowerCase()]) return assetMap[clean.toLowerCase()];
+
+        // 2. Direct match on basename
         if (assetMap[baseName]) return assetMap[baseName];
         if (assetMap[baseName.toLowerCase()]) return assetMap[baseName.toLowerCase()];
+
+        // 3. Match by suffix / endsWith or includes
         const match = Object.keys(assetMap).find((k) => {
           const lk = k.toLowerCase();
           const lb = baseName.toLowerCase();
-          return lk === lb || lk.endsWith('/' + lb) || lb.endsWith('/' + lk);
+          const lc = clean.toLowerCase();
+          return lk === lb || lk === lc || lk.endsWith('/' + lb) || lc.endsWith('/' + lk) || lk.endsWith('/' + lc) || lc.endsWith(lk);
         });
         if (match) return assetMap[match];
         return itemUrl;
@@ -237,39 +256,100 @@ export class Renderer {
         });
 
         if (!hasAnyMap) {
-          console.log('[Renderer] Auto-bind inteligente: associando imagens arrastadas ao modelo .obj');
+          console.log('[Renderer] Auto-bind inteligente: associando imagens arrastadas/da pasta ao modelo .obj');
           const texLoader = new THREE.TextureLoader();
+          const loadedTextures = new Map();
 
-          const albedoKey = imageKeys.find((k) => /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(k)) ||
-                            (imageKeys.length === 1 ? imageKeys[0] : null);
-          const normalKey = imageKeys.find((k) => /(normal|norm|nrm)/i.test(k));
-          const roughnessKey = imageKeys.find((k) => /(roughness|rough)/i.test(k));
-          const metallicKey = imageKeys.find((k) => /(metallic|metalness|metal)/i.test(k));
-          const alphaKey = imageKeys.find((k) => /(opacity|alpha|mask)/i.test(k));
+          const getTexture = (fileKey, isColor = false) => {
+            if (!fileKey || !assetMap[fileKey]) return null;
+            const texUrl = assetMap[fileKey];
+            if (!loadedTextures.has(texUrl)) {
+              const tex = texLoader.load(texUrl);
+              if (isColor) tex.colorSpace = THREE.SRGBColorSpace;
+              loadedTextures.set(texUrl, tex);
+            }
+            return loadedTextures.get(texUrl);
+          };
 
-          const albedoTex = albedoKey ? texLoader.load(assetMap[albedoKey]) : null;
-          if (albedoTex) albedoTex.colorSpace = THREE.SRGBColorSpace;
+          // Find general fallback textures
+          const fallbackAlbedo = imageKeys.find((k) => /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(k)) ||
+                                (imageKeys.length === 1 ? imageKeys[0] : null);
+          const fallbackNormal = imageKeys.find((k) => /(normal|norm|nrm)/i.test(k));
+          const fallbackRoughness = imageKeys.find((k) => /(roughness|rough)/i.test(k));
+          const fallbackMetallic = imageKeys.find((k) => /(metallic|metalness|metal)/i.test(k));
+          const fallbackAlpha = imageKeys.find((k) => /(opacity|alpha|mask)/i.test(k));
 
-          const normalTex = normalKey ? texLoader.load(assetMap[normalKey]) : null;
-          const roughnessTex = roughnessKey ? texLoader.load(assetMap[roughnessKey]) : null;
-          const metallicTex = metallicKey ? texLoader.load(assetMap[metallicKey]) : null;
-          const alphaTex = alphaKey ? texLoader.load(assetMap[alphaKey]) : null;
-
-          const pbrMat = new THREE.MeshStandardMaterial({
-            map: albedoTex,
-            normalMap: normalTex,
-            roughnessMap: roughnessTex,
-            metalnessMap: metallicTex,
-            alphaMap: alphaTex,
-            transparent: Boolean(alphaTex),
-            roughness: roughnessTex ? 1.0 : 0.6,
-            metalness: metallicTex ? 1.0 : 0.05,
-            side: THREE.DoubleSide,
-          });
+          const createdMaterials = new Map();
 
           model.traverse((node) => {
             if (node.isMesh) {
-              node.material = pbrMat;
+              const meshName = (node.name || '').toLowerCase();
+              const matName = (node.material && node.material.name ? node.material.name : '').toLowerCase();
+
+              // Try to find textures matching this specific mesh or material name
+              const searchKey = meshName || matName;
+              let albedoKey = null;
+              let normalKey = null;
+              let roughnessKey = null;
+              let metallicKey = null;
+              let alphaKey = null;
+
+              if (searchKey) {
+                const tokens = searchKey.split(/[^a-z0-9]/).filter((t) => t.length >= 3);
+                for (const token of tokens) {
+                  if (!albedoKey) {
+                    albedoKey = imageKeys.find((k) => {
+                      const lk = k.toLowerCase();
+                      return lk.includes(token) && /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(lk);
+                    }) || imageKeys.find((k) => k.toLowerCase().includes(token));
+                  }
+                  if (!normalKey) {
+                    normalKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(normal|norm|nrm)/i.test(k));
+                  }
+                  if (!roughnessKey) {
+                    roughnessKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(roughness|rough)/i.test(k));
+                  }
+                  if (!metallicKey) {
+                    metallicKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(metallic|metalness|metal)/i.test(k));
+                  }
+                  if (!alphaKey) {
+                    alphaKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(opacity|alpha|mask)/i.test(k));
+                  }
+                }
+              }
+
+              // Fallbacks if not matched per-part
+              albedoKey = albedoKey || fallbackAlbedo;
+              normalKey = normalKey || fallbackNormal;
+              roughnessKey = roughnessKey || fallbackRoughness;
+              metallicKey = metallicKey || fallbackMetallic;
+              alphaKey = alphaKey || fallbackAlpha;
+
+              const matKey = `${albedoKey || ''}|${normalKey || ''}|${roughnessKey || ''}|${metallicKey || ''}|${alphaKey || ''}`;
+
+              if (!createdMaterials.has(matKey)) {
+                const albedoTex = albedoKey ? getTexture(albedoKey, true) : null;
+                const normalTex = normalKey ? getTexture(normalKey, false) : null;
+                const roughnessTex = roughnessKey ? getTexture(roughnessKey, false) : null;
+                const metallicTex = metallicKey ? getTexture(metallicKey, false) : null;
+                const alphaTex = alphaKey ? getTexture(alphaKey, false) : null;
+
+                const pbrMat = new THREE.MeshStandardMaterial({
+                  name: matName || meshName || 'AutoPBR',
+                  map: albedoTex,
+                  normalMap: normalTex,
+                  roughnessMap: roughnessTex,
+                  metalnessMap: metallicTex,
+                  alphaMap: alphaTex,
+                  transparent: Boolean(alphaTex),
+                  roughness: roughnessTex ? 1.0 : 0.6,
+                  metalness: metallicTex ? 1.0 : 0.05,
+                  side: THREE.DoubleSide,
+                });
+                createdMaterials.set(matKey, pbrMat);
+              }
+
+              node.material = createdMaterials.get(matKey);
             }
           });
         }

@@ -722,6 +722,19 @@ function setupUI() {
     fileInput.value = '';
   });
 
+  // Carregar Pasta Completa (OBJ + Subpastas de Textura)
+  const folderInput = $('file-input-folder');
+  const btnChooseFolder = $('btn-choose-folder');
+  if (btnChooseFolder && folderInput) {
+    btnChooseFolder.addEventListener('click', () => folderInput.click());
+    folderInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      await handleUploadedFiles(files);
+      folderInput.value = '';
+    });
+  }
+
   // Toggle de Texturas
   const chkTextures = /** @type {HTMLInputElement} */ ($('chk-show-textures'));
   if (chkTextures) {
@@ -832,6 +845,7 @@ async function extractFilesFromDataTransfer(dataTransfer) {
         if (entry.isFile) {
           return new Promise((resolve) => {
             entry.file((file) => {
+              file.filepath = entry.fullPath ? entry.fullPath.replace(/^\//, '') : (file.webkitRelativePath || file.name);
               files.push(file);
               resolve();
             }, () => resolve());
@@ -890,6 +904,9 @@ async function handleUploadedFiles(files) {
   const assetMap = {};
   const urlsToRevoke = [];
 
+  const modelRel = (modelFile.filepath || modelFile.webkitRelativePath || '').replace(/\\/g, '/');
+  const modelDir = modelRel.includes('/') ? modelRel.substring(0, modelRel.lastIndexOf('/') + 1) : '';
+
   for (const f of files) {
     const objUrl = URL.createObjectURL(f);
     urlsToRevoke.push(objUrl);
@@ -903,10 +920,26 @@ async function handleUploadedFiles(files) {
     assetMap[base] = objUrl;
     assetMap[base.toLowerCase()] = objUrl;
 
-    // WebKit relative path if dragged from folder
-    if (f.webkitRelativePath) {
-      assetMap[f.webkitRelativePath] = objUrl;
-      assetMap[f.webkitRelativePath.toLowerCase()] = objUrl;
+    // Relative path from dropped folder or file input with subpath variations
+    const rel = (f.filepath || f.webkitRelativePath || '').replace(/\\/g, '/').replace(/^\//, '');
+    if (rel) {
+      assetMap[rel] = objUrl;
+      assetMap[rel.toLowerCase()] = objUrl;
+
+      // Register subparts (e.g. "Char/Textures/head.png" -> "Textures/head.png")
+      const parts = rel.split('/');
+      for (let i = 1; i < parts.length; i++) {
+        const sub = parts.slice(i).join('/');
+        assetMap[sub] = objUrl;
+        assetMap[sub.toLowerCase()] = objUrl;
+      }
+
+      // If model was inside a subfolder, compute relative path from model's folder
+      if (modelDir && rel.startsWith(modelDir)) {
+        const fromModel = rel.substring(modelDir.length);
+        assetMap[fromModel] = objUrl;
+        assetMap[fromModel.toLowerCase()] = objUrl;
+      }
     }
   }
 
@@ -917,7 +950,7 @@ async function handleUploadedFiles(files) {
   // Revoke URLs after model and textures have been compiled to WebGL memory
   setTimeout(() => {
     urlsToRevoke.forEach((u) => URL.revokeObjectURL(u));
-  }, 45000);
+  }, 60000);
 }
 
 /* ─── Local Webcam Tracking ───────────────────────────────────────────────── */
@@ -1378,6 +1411,81 @@ function setupTimeline() {
       }
     }
   };
+
+  // Central de Exportação & Download (Apple HIG Modal)
+  const modalExport = $('modal-export-menu');
+  const btnCloseExportModal = $('btn-close-export-modal');
+  const btnOpenExportTl = $('btn-tl-export-menu');
+  const btnOpenExportSide = $('btn-side-open-export-menu');
+
+  const openExportModal = () => {
+    if (modalExport) modalExport.classList.add('open');
+  };
+  const closeExportModal = () => {
+    if (modalExport) modalExport.classList.remove('open');
+  };
+
+  if (btnOpenExportTl) btnOpenExportTl.addEventListener('click', openExportModal);
+  if (btnOpenExportSide) btnOpenExportSide.addEventListener('click', openExportModal);
+  if (btnCloseExportModal) btnCloseExportModal.addEventListener('click', closeExportModal);
+  if (modalExport) {
+    modalExport.addEventListener('click', (e) => {
+      if (e.target === modalExport) closeExportModal();
+    });
+  }
+
+  // Opções dentro do Modal de Exportação
+  const btnChoiceFBX = $('btn-export-choice-fbx');
+  if (btnChoiceFBX) {
+    btnChoiceFBX.addEventListener('click', async () => {
+      closeExportModal();
+      await exportFBXAction(btnChoiceFBX);
+    });
+  }
+
+  const btnChoiceGLB = $('btn-export-choice-glb');
+  if (btnChoiceGLB) {
+    btnChoiceGLB.addEventListener('click', async () => {
+      closeExportModal();
+      await exportGLBAction(btnChoiceGLB);
+    });
+  }
+
+  const btnChoiceCSV = $('btn-export-choice-csv');
+  if (btnChoiceCSV) {
+    btnChoiceCSV.addEventListener('click', () => {
+      closeExportModal();
+      exportCSVAction();
+    });
+  }
+
+  const btnChoiceJSON = $('btn-export-choice-json');
+  if (btnChoiceJSON) {
+    btnChoiceJSON.addEventListener('click', () => {
+      closeExportModal();
+      exportJSONAction();
+    });
+  }
+
+  const btnChoiceMP4 = $('btn-export-choice-mp4');
+  if (btnChoiceMP4) {
+    btnChoiceMP4.addEventListener('click', () => {
+      closeExportModal();
+      if (btnExport) btnExport.click();
+    });
+  }
+
+  // Permitir clicar em qualquer parte do card para acionar o botão
+  ['card-export-fbx', 'card-export-glb', 'card-export-csv', 'card-export-json', 'card-export-mp4'].forEach((cardId) => {
+    const card = $(cardId);
+    if (!card) return;
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      const btn = card.querySelector('button');
+      if (btn) btn.click();
+    });
+  });
 
   // Botões de Exportação na Timeline e no Drawer Lateral
   const btnExportGLB = $('btn-tl-export-glb');

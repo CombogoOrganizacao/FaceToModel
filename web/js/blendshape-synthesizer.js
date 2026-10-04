@@ -162,96 +162,124 @@ const DEFORMATION_RULES = {
 
   // ── Jaw (4) ──
   jawOpen: (u, v, w, s) => {
-    if (v < 0.45 && w > 0.15) {
-      const falloff = Math.max(0, (0.45 - v) / 0.45);
-      return [0, -0.095 * falloff * s, 0.020 * falloff * s];
+    if (Math.abs(u) < 0.40 && v > 0.10 && v < 0.45 && w > 0.45) {
+      const gu = Math.exp(-Math.pow(u / 0.24, 2));
+      const gv = Math.sin(((v - 0.10) / (0.45 - 0.10)) * Math.PI);
+      const gw = Math.max(0, (w - 0.45) / 0.55);
+      const weight = gu * gv * gw;
+      return [0, -0.045 * weight * s, -0.010 * weight * s];
     }
     return null;
   },
   jawForward: (u, v, w, s) => {
-    if (v < 0.42 && w > 0.15) {
-      const falloff = Math.max(0, (0.42 - v) / 0.42);
-      return [0, 0, 0.045 * falloff * s];
+    if (Math.abs(u) < 0.38 && v > 0.12 && v < 0.42 && w > 0.45) {
+      const gu = Math.exp(-Math.pow(u / 0.24, 2));
+      const gv = Math.sin(((v - 0.12) / (0.42 - 0.12)) * Math.PI);
+      const gw = Math.max(0, (w - 0.45) / 0.55);
+      const weight = gu * gv * gw;
+      return [0, 0, 0.025 * weight * s];
     }
     return null;
   },
   jawLeft: (u, v, w, s) => {
-    if (v < 0.42 && w > 0.15) {
-      const falloff = Math.max(0, (0.42 - v) / 0.42);
-      return [-0.040 * falloff * s, 0, 0];
+    if (Math.abs(u) < 0.40 && v > 0.12 && v < 0.42 && w > 0.45) {
+      const gu = Math.exp(-Math.pow(u / 0.26, 2));
+      const gv = Math.sin(((v - 0.12) / (0.42 - 0.12)) * Math.PI);
+      const gw = Math.max(0, (w - 0.45) / 0.55);
+      const weight = gu * gv * gw;
+      return [-0.025 * weight * s, 0, 0];
     }
     return null;
   },
   jawRight: (u, v, w, s) => {
-    if (v < 0.42 && w > 0.15) {
-      const falloff = Math.max(0, (0.42 - v) / 0.42);
-      return [0.040 * falloff * s, 0, 0];
+    if (Math.abs(u) < 0.40 && v > 0.12 && v < 0.42 && w > 0.45) {
+      const gu = Math.exp(-Math.pow(u / 0.26, 2));
+      const gv = Math.sin(((v - 0.12) / (0.42 - 0.12)) * Math.PI);
+      const gw = Math.max(0, (w - 0.45) / 0.55);
+      const weight = gu * gv * gw;
+      return [0.025 * weight * s, 0, 0];
     }
     return null;
   },
 
   // ── Mouth (24) ──
   mouthSmileLeft: (u, v, w, s) => {
-    if (u < 0.05 && u > -0.45 && v > 0.22 && v < 0.45 && w > 0.32) {
-      const g = Math.exp(-Math.pow((u + 0.22) / 0.14, 2) - Math.pow((v - 0.33) / 0.10, 2));
-      return [-0.035 * g * s, 0.048 * g * s, 0.010 * g * s];
+    if (u < 0.05 && u > -0.42 && v > 0.22 && v < 0.46 && w > 0.42) {
+      const g = Math.exp(-Math.pow((u + 0.20) / 0.14, 2) - Math.pow((v - 0.34) / 0.10, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      return [-0.028 * weight * s, 0.038 * weight * s, 0.008 * weight * s];
     }
     return null;
   },
   mouthSmileRight: (u, v, w, s) => {
-    if (u > -0.05 && u < 0.45 && v > 0.22 && v < 0.45 && w > 0.32) {
-      const g = Math.exp(-Math.pow((u - 0.22) / 0.14, 2) - Math.pow((v - 0.33) / 0.10, 2));
-      return [0.035 * g * s, 0.048 * g * s, 0.010 * g * s];
+    if (u > -0.05 && u < 0.42 && v > 0.22 && v < 0.46 && w > 0.42) {
+      const g = Math.exp(-Math.pow((u - 0.20) / 0.14, 2) - Math.pow((v - 0.34) / 0.10, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      return [0.028 * weight * s, 0.038 * weight * s, 0.008 * weight * s];
     }
     return null;
   },
   mouthFrownLeft: (u, v, w, s) => {
-    if (u < 0.05 && u > -0.45 && v > 0.20 && v < 0.42 && w > 0.32) {
-      const g = Math.exp(-Math.pow((u + 0.22) / 0.14, 2) - Math.pow((v - 0.31) / 0.10, 2));
-      return [-0.012 * g * s, -0.042 * g * s, -0.005 * g * s];
+    if (u < 0.05 && u > -0.42 && v > 0.20 && v < 0.42 && w > 0.42) {
+      const g = Math.exp(-Math.pow((u + 0.20) / 0.14, 2) - Math.pow((v - 0.30) / 0.09, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      return [-0.010 * weight * s, -0.030 * weight * s, -0.004 * weight * s];
     }
     return null;
   },
   mouthFrownRight: (u, v, w, s) => {
-    if (u > -0.05 && u < 0.45 && v > 0.20 && v < 0.42 && w > 0.32) {
-      const g = Math.exp(-Math.pow((u - 0.22) / 0.14, 2) - Math.pow((v - 0.31) / 0.10, 2));
-      return [0.012 * g * s, -0.042 * g * s, -0.005 * g * s];
+    if (u > -0.05 && u < 0.42 && v > 0.20 && v < 0.42 && w > 0.42) {
+      const g = Math.exp(-Math.pow((u - 0.20) / 0.14, 2) - Math.pow((v - 0.30) / 0.09, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      return [0.010 * weight * s, -0.030 * weight * s, -0.004 * weight * s];
     }
     return null;
   },
   mouthPucker: (u, v, w, s) => {
-    if (Math.abs(u) < 0.35 && v > 0.22 && v < 0.44 && w > 0.35) {
-      const g = Math.exp(-Math.pow(u / 0.18, 2) - Math.pow((v - 0.33) / 0.10, 2));
-      return [-u * 0.25 * g * s, 0, 0.055 * g * s];
+    if (Math.abs(u) < 0.32 && v > 0.24 && v < 0.44 && w > 0.42) {
+      const g = Math.exp(-Math.pow(u / 0.16, 2) - Math.pow((v - 0.34) / 0.09, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      return [-u * 0.18 * weight * s, 0, 0.040 * weight * s];
     }
     return null;
   },
   mouthFunnel: (u, v, w, s) => {
-    if (Math.abs(u) < 0.35 && v > 0.20 && v < 0.46 && w > 0.35) {
-      const g = Math.exp(-Math.pow(u / 0.18, 2) - Math.pow((v - 0.33) / 0.12, 2));
-      const dy = v > 0.33 ? 0.025 * g * s : -0.025 * g * s;
-      return [-u * 0.15 * g * s, dy, 0.038 * g * s];
+    if (Math.abs(u) < 0.32 && v > 0.22 && v < 0.46 && w > 0.42) {
+      const g = Math.exp(-Math.pow(u / 0.16, 2) - Math.pow((v - 0.34) / 0.10, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      const dy = v > 0.34 ? 0.018 * weight * s : -0.018 * weight * s;
+      return [-u * 0.12 * weight * s, dy, 0.028 * weight * s];
     }
     return null;
   },
   mouthLeft: (u, v, w, s) => {
-    if (Math.abs(u) < 0.35 && v > 0.22 && v < 0.44 && w > 0.35) {
-      const g = Math.exp(-Math.pow(u / 0.22, 2) - Math.pow((v - 0.33) / 0.11, 2));
-      return [-0.035 * g * s, 0, 0];
+    if (Math.abs(u) < 0.35 && v > 0.24 && v < 0.44 && w > 0.42) {
+      const g = Math.exp(-Math.pow(u / 0.20, 2) - Math.pow((v - 0.34) / 0.10, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      return [-0.025 * g * gw * s, 0, 0];
     }
     return null;
   },
   mouthRight: (u, v, w, s) => {
-    if (Math.abs(u) < 0.35 && v > 0.22 && v < 0.44 && w > 0.35) {
-      const g = Math.exp(-Math.pow(u / 0.22, 2) - Math.pow((v - 0.33) / 0.11, 2));
-      return [0.035 * g * s, 0, 0];
+    if (Math.abs(u) < 0.35 && v > 0.24 && v < 0.44 && w > 0.42) {
+      const g = Math.exp(-Math.pow(u / 0.20, 2) - Math.pow((v - 0.34) / 0.10, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      return [0.025 * g * gw * s, 0, 0];
     }
     return null;
   },
   mouthClose: (u, v, w, s) => {
-    if (Math.abs(u) < 0.32 && v > 0.22 && v < 0.44 && w > 0.35) {
-      const g = Math.exp(-Math.pow(u / 0.20, 2) - Math.pow((v - 0.33) / 0.10, 2));
-      const dy = v > 0.33 ? -0.015 * g * s : 0.015 * g * s;
+    if (Math.abs(u) < 0.30 && v > 0.24 && v < 0.44 && w > 0.42) {
+      const g = Math.exp(-Math.pow(u / 0.18, 2) - Math.pow((v - 0.34) / 0.08, 2));
+      const gw = Math.max(0, (w - 0.42) / 0.58);
+      const weight = g * gw;
+      const dy = v > 0.34 ? -0.012 * weight * s : 0.012 * weight * s;
       return [0, dy, 0];
     }
     return null;
@@ -402,35 +430,42 @@ const DEFORMATION_RULES = {
 };
 
 /**
- * Finds the primary face mesh of a model or the mesh with the most vertices.
+ * Finds the primary face mesh of a model with strict face priority.
  * @param {THREE.Object3D} model
  * @returns {THREE.Mesh|null}
  */
 export function findFaceMesh(model) {
-  let bestMesh = null;
-  let maxVerts = -1;
+  let faceMesh = null;
+  let maxFaceVerts = -1;
+  let fallbackMesh = null;
+  let maxFallbackVerts = -1;
+
+  // Words that strongly indicate face/head geometry
+  const faceRegex = /(head|face|cabeça|rosto|head_mesh|facemesh|head_geo|blendshape|morph)/i;
+  // Words that strictly exclude a mesh from being the face
+  const excludeRegex = /(body|corpo|torso|legs|pants|shirt|jacket|shoes|hair|eye|eyebrow|teeth|tongue|lash|occlusion|cloth|bottom|top|arm|braço|hand|mão)/i;
 
   model.traverse((node) => {
     if (node.isMesh && node.geometry && node.geometry.attributes.position) {
       const name = (node.name || '').toLowerCase();
       const count = node.geometry.attributes.position.count;
+      if (count < 60) return;
 
-      // Priority to nodes explicitly named head/face
-      const isFaceNamed = /(head|face|corpo|body|avatar)/i.test(name) && !/(hair|eye|eyebrow|teeth|tongue|lash|occlusion)/i.test(name);
-
-      if (isFaceNamed && count > 100) {
-        if (!bestMesh || count > maxVerts) {
-          bestMesh = node;
-          maxVerts = count;
+      if (faceRegex.test(name) && !excludeRegex.test(name)) {
+        if (count > maxFaceVerts) {
+          faceMesh = node;
+          maxFaceVerts = count;
         }
-      } else if (!bestMesh && count > maxVerts) {
-        bestMesh = node;
-        maxVerts = count;
+      } else if (!excludeRegex.test(name)) {
+        if (count > maxFallbackVerts) {
+          fallbackMesh = node;
+          maxFallbackVerts = count;
+        }
       }
     }
   });
 
-  return bestMesh;
+  return faceMesh || fallbackMesh;
 }
 
 /**
@@ -452,33 +487,65 @@ export function analyzeHeadRegion(mesh, headBone = null) {
   const fullHeight = Math.max(0.001, box.max.y - box.min.y);
   const fullDepth = Math.max(0.001, box.max.z - box.min.z);
 
-  // 1. Detect if model is full-body (aspect ratio tall)
-  const isFullBody = fullHeight > fullWidth * 1.5;
-
   let headMinY, headMaxY;
-  let headMinX = box.min.x, headMaxX = box.max.x;
-  let headMinZ = box.min.z, headMaxZ = box.max.z;
 
   if (headBone) {
     const boneWorldPos = new THREE.Vector3();
     headBone.getWorldPosition(boneWorldPos);
     const boneLocalPos = mesh.worldToLocal(boneWorldPos);
-    const radius = fullHeight * 0.16;
-    headMinY = boneLocalPos.y - radius * 0.7;
-    headMaxY = boneLocalPos.y + radius * 1.3;
-  } else if (isFullBody) {
-    // Top 22% of character represents head and face
-    headMinY = box.min.y + fullHeight * 0.76;
-    headMaxY = box.max.y;
+    const radius = fullHeight * 0.12;
+    headMinY = boneLocalPos.y - radius * 0.6;
+    headMaxY = boneLocalPos.y + radius * 1.2;
   } else {
-    // Bust / standalone head
-    headMinY = box.min.y;
-    headMaxY = box.max.y;
+    // Slice vertex analysis across the top 45% of the model to locate neck constriction
+    const numSlices = 24;
+    const sliceMinY = box.min.y + fullHeight * 0.55;
+    const sliceMaxY = box.max.y;
+    const sliceStep = (sliceMaxY - sliceMinY) / numSlices;
+    const sliceWidths = new Float32Array(numSlices);
+    const sliceCounts = new Uint32Array(numSlices);
+
+    for (let i = 0; i < count; i++) {
+      const y = posAttr.getY(i);
+      if (y >= sliceMinY && y <= sliceMaxY) {
+        const sliceIdx = Math.min(numSlices - 1, Math.floor((y - sliceMinY) / sliceStep));
+        const x = Math.abs(posAttr.getX(i));
+        if (x > sliceWidths[sliceIdx]) sliceWidths[sliceIdx] = x;
+        sliceCounts[sliceIdx]++;
+      }
+    }
+
+    // Find local minimum width in lower half of the sampled top region (the neck)
+    let neckSlice = -1;
+    let minW = Infinity;
+    for (let s = 1; s < Math.floor(numSlices * 0.5); s++) {
+      if (sliceCounts[s] > 10 && sliceWidths[s] < minW) {
+        minW = sliceWidths[s];
+        neckSlice = s;
+      }
+    }
+
+    // Check if shoulders widen significantly below the neck
+    const shouldersWide = sliceWidths[0] > minW * 1.35;
+    const isFullBodyOrBust = (fullHeight > fullWidth * 1.2) || shouldersWide;
+
+    if (isFullBodyOrBust && neckSlice > 0) {
+      headMinY = sliceMinY + neckSlice * sliceStep;
+      headMaxY = box.max.y;
+    } else if (isFullBodyOrBust) {
+      // Fallback: top 18% of character represents head and face
+      headMinY = box.min.y + fullHeight * 0.82;
+      headMaxY = box.max.y;
+    } else {
+      // Standalone head / bust mesh
+      headMinY = box.min.y;
+      headMaxY = box.max.y;
+    }
   }
 
   // Refine bounds to head vertices only
-  let hMinX = Infinity, hMaxX = -Infinity;
-  let hMinZ = Infinity, hMaxZ = -Infinity;
+  let headMinX = Infinity, headMaxX = -Infinity;
+  let headMinZ = Infinity, headMaxZ = -Infinity;
   let headVertCount = 0;
 
   for (let i = 0; i < count; i++) {
@@ -486,26 +553,25 @@ export function analyzeHeadRegion(mesh, headBone = null) {
     if (y >= headMinY && y <= headMaxY) {
       const x = posAttr.getX(i);
       const z = posAttr.getZ(i);
-      if (x < hMinX) hMinX = x;
-      if (x > hMaxX) hMaxX = x;
-      if (z < hMinZ) hMinZ = z;
-      if (z > hMaxZ) hMaxZ = z;
+      if (x < headMinX) headMinX = x;
+      if (x > headMaxX) headMaxX = x;
+      if (z < headMinZ) headMinZ = z;
+      if (z > headMaxZ) headMaxZ = z;
       headVertCount++;
     }
   }
 
-  if (headVertCount > 30) {
-    headMinX = hMinX;
-    headMaxX = hMaxX;
-    headMinZ = hMinZ;
-    headMaxZ = hMaxZ;
+  if (headVertCount < 30) {
+    headMinX = box.min.x; headMaxX = box.max.x;
+    headMinZ = box.min.z; headMaxZ = box.max.z;
+    headMinY = box.min.y; headMaxY = box.max.y;
   }
 
   const headWidth = Math.max(0.001, headMaxX - headMinX);
   const headHeight = Math.max(0.001, headMaxY - headMinY);
   const headDepth = Math.max(0.001, headMaxZ - headMinZ);
 
-  // 2. Facing direction: detect whether facial features protrude along +Z or -Z
+  // Facing direction: detect whether facial features protrude along +Z or -Z
   const midZ = (headMinZ + headMaxZ) * 0.5;
   const midY = (headMinY + headMaxY) * 0.5;
   let plusZConvexity = 0;
@@ -521,15 +587,15 @@ export function analyzeHeadRegion(mesh, headBone = null) {
   }
 
   const forwardSign = plusZConvexity >= minusZConvexity ? 1 : -1;
+  const scale = Math.min(headHeight, headWidth * 1.25);
 
   return {
     headMinX, headMaxX,
     headMinY, headMaxY,
     headMinZ, headMaxZ,
     headWidth, headHeight, headDepth,
-    scale: headHeight,
-    forwardSign,
-    isFullBody
+    scale,
+    forwardSign
   };
 }
 

@@ -170,42 +170,21 @@
           </svg>
         </button>
 
-        <button class="tl-action-btn secondary" id="btn-tl-export-glb" title="Exportar Modelo 3D (.glb) com Animação (Godot, Unity, Blender)" aria-label="Exportar GLB">
-          <svg class="svg-icon sm" viewBox="0 0 24 24">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-
-        <button class="tl-action-btn secondary" id="btn-tl-export-fbx" title="Exportar Modelo 3D (.fbx) com Animação (via Blender Headless)" aria-label="Exportar FBX">
-          <svg class="svg-icon sm" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M7 8h5M7 12h3M7 16h5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
-          </svg>
-        </button>
-
-        <button class="tl-action-btn secondary" id="btn-tl-export-csv" title="Exportar Curvas em CSV (Unreal Engine Live Link Face)" aria-label="Exportar Unreal Live Link CSV">
-          <svg class="svg-icon sm" viewBox="0 0 24 24">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
-            <line x1="8" y1="17" x2="16" y2="17" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
-          </svg>
-        </button>
-
-        <button class="tl-action-btn secondary" id="btn-tl-export-json" title="Exportar Curvas em JSON (Multi-Engine / Godot / Unity)" aria-label="Exportar Curvas JSON">
-          <svg class="svg-icon sm" viewBox="0 0 24 24">
-            <polyline points="16 18 22 12 16 6" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-            <polyline points="8 6 2 12 8 18" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-
-        <button class="tl-action-btn primary" id="btn-tl-export" title="Exportar Trecho Selecionado em MP4" aria-label="Exportar Vídeo">
+        <button class="tl-action-btn primary" id="btn-tl-export-menu" title="Menu de Exportação e Download (FBX, GLB, CSV, JSON, MP4)" aria-label="Exportar Animação">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
+          <span class="tl-export-label">Exportar</span>
         </button>
+
+        <!-- Acesso rápido direto (oculto para fallback de automações) -->
+        <div style="display: none;" aria-hidden="true">
+          <button id="btn-tl-export-glb" title="Exportar GLB"></button>
+          <button id="btn-tl-export-fbx" title="Exportar FBX"></button>
+          <button id="btn-tl-export-csv" title="Exportar CSV"></button>
+          <button id="btn-tl-export-json" title="Exportar JSON"></button>
+          <button id="btn-tl-export" title="Exportar MP4"></button>
+        </div>
       </div>
     </div>
   </div>
@@ -262,14 +241,46 @@
           </div>
 
           <input type="file" id="file-input-model" accept=".glb,.gltf,.fbx,.obj,.mtl,.png,.jpg,.jpeg,.webp" multiple style="display: none;" />
+          <input type="file" id="file-input-folder" webkitdirectory directory multiple style="display: none;" />
 
-          <div class="card-row interactive" id="btn-choose-model" style="margin-top: 10px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+            <div class="card-row interactive" id="btn-choose-model" style="margin-top: 0; padding: 8px 10px; cursor: pointer;">
+              <div class="row-leading">
+                <div class="row-icon-box green" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none"/>
+                    <polyline points="17 8 12 3 7 8" stroke="currentColor" stroke-width="2" fill="none"/>
+                    <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="2"/>
+                  </svg>
+                </div>
+                <div class="row-text">
+                  <span class="row-title" style="font-size: 11px;">Arquivos</span>
+                  <span class="row-sub" style="font-size: 9px;">.glb / .fbx / .obj</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-row interactive" id="btn-choose-folder" style="margin-top: 0; padding: 8px 10px; cursor: pointer;">
+              <div class="row-leading">
+                <div class="row-icon-box blue" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <div class="row-text">
+                  <span class="row-title" style="font-size: 11px;">Pasta Completa</span>
+                  <span class="row-sub" style="font-size: 9px;">OBJ + Subpastas</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status do Modelo Carregado -->
+          <div class="card-row" style="margin-top: 8px;">
             <div class="row-leading">
-              <div class="row-icon-box green">
-                <svg class="svg-icon" viewBox="0 0 24 24">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="2" fill="none"/>
-                  <polyline points="17 8 12 3 7 8" stroke="currentColor" stroke-width="2" fill="none"/>
-                  <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="2"/>
+              <div class="row-icon-box purple" style="width: 28px; height: 28px;">
+                <svg class="svg-icon sm" viewBox="0 0 24 24">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.75" fill="none"/>
                 </svg>
               </div>
               <div class="row-text">
@@ -277,7 +288,6 @@
                 <span class="row-sub" id="model-coverage">52 blendshapes mapeados</span>
               </div>
             </div>
-            <span style="font-size: 11px; font-weight: 500; color: var(--accent-blue);">Importar</span>
           </div>
 
           <!-- Toggle de Texturas -->
@@ -387,6 +397,13 @@
           </svg>
         </button>
         <div class="accordion-content">
+          <button class="btn-apple primary" id="btn-side-open-export-menu" style="font-size: 11.5px; padding: 9px 12px; margin-bottom: 12px; width: 100%; justify-content: center; gap: 8px;">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Abrir Central de Exportação
+          </button>
+
           <!-- Unreal Engine 5 (Live Link Face CSV) -->
           <div class="card-row" style="margin-bottom: 8px; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; border: 0.5px solid var(--border-divider);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -905,6 +922,127 @@
   </div>
 </div>
 
+<!-- ── Modal Central de Exportação & Download (Apple HIG Dark Glass) ── -->
+<div class="modal-backdrop" id="modal-export-menu">
+  <div class="modal-sheet export-sheet">
+    <div class="export-modal-header">
+      <div class="export-modal-title-box">
+        <div class="export-header-icon">
+          <svg class="svg-icon" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="export-modal-title">Central de Exportação & Download</h3>
+          <p class="export-modal-sub">Escolha o formato ideal para sua game engine, software 3D ou vídeo</p>
+        </div>
+      </div>
+      <button class="export-close-btn" id="btn-close-export-modal" aria-label="Fechar">
+        <svg class="svg-icon sm" viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="export-options-grid">
+      <!-- Opção 1: FBX com Animação -->
+      <div class="export-option-card" id="card-export-fbx">
+        <div class="export-card-top">
+          <div class="export-format-badge badge-orange">FBX</div>
+          <span class="export-target-tag">Unreal Engine • Unity • Maya</span>
+        </div>
+        <div class="export-card-body">
+          <h4 class="export-card-title">Autodesk FBX com Animação</h4>
+          <p class="export-card-desc">Exporta o modelo completo com armaduras, morph targets e curvas faciais assadas via Blender Headless local.</p>
+        </div>
+        <button class="btn-apple primary export-action-trigger" id="btn-export-choice-fbx">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M7 8h5M7 12h3M7 16h5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+          </svg>
+          Exportar FBX
+        </button>
+      </div>
+
+      <!-- Opção 2: GLB Binário -->
+      <div class="export-option-card" id="card-export-glb">
+        <div class="export-card-top">
+          <div class="export-format-badge badge-green">GLB</div>
+          <span class="export-target-tag">Godot 4 • Unity • Blender • Web</span>
+        </div>
+        <div class="export-card-body">
+          <h4 class="export-card-title">GLTF / GLB Binário com Animação</h4>
+          <p class="export-card-desc">Arquivo 3D autocontido em coordenadas limpas com trilhas de morph target prontas para Godot 4 e WebGL.</p>
+        </div>
+        <button class="btn-apple secondary export-action-trigger" id="btn-export-choice-glb">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Exportar GLB
+        </button>
+      </div>
+
+      <!-- Opção 3: CSV Live Link Face -->
+      <div class="export-option-card" id="card-export-csv">
+        <div class="export-card-top">
+          <div class="export-format-badge badge-purple">CSV</div>
+          <span class="export-target-tag">Unreal MetaHuman • Live Link Face</span>
+        </div>
+        <div class="export-card-body">
+          <h4 class="export-card-title">Curvas de Captura Live Link (CSV)</h4>
+          <p class="export-card-desc">Tabela com 52 blendshapes padronizados e rotação 3DoF a 60 FPS pronta para o Sequencer do Unreal Engine.</p>
+        </div>
+        <button class="btn-apple secondary export-action-trigger" id="btn-export-choice-csv">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Exportar CSV
+        </button>
+      </div>
+
+      <!-- Opção 4: JSON Raw -->
+      <div class="export-option-card" id="card-export-json">
+        <div class="export-card-top">
+          <div class="export-format-badge badge-cyan">JSON</div>
+          <span class="export-target-tag">Multi-Engine • Web • Custom Pipelines</span>
+        </div>
+        <div class="export-card-body">
+          <h4 class="export-card-title">Curvas de Animação em JSON</h4>
+          <p class="export-card-desc">Curvas completas em formato estruturado com rotação e 52 pesos faciais por quadro para pipelines customizados.</p>
+        </div>
+        <button class="btn-apple secondary export-action-trigger" id="btn-export-choice-json">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polyline points="16 18 22 12 16 6" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="8 6 2 12 8 18" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Exportar JSON
+        </button>
+      </div>
+
+      <!-- Opção 5: MP4 Renderizado -->
+      <div class="export-option-card" id="card-export-mp4">
+        <div class="export-card-top">
+          <div class="export-format-badge badge-blue">MP4</div>
+          <span class="export-target-tag">1080p 60 FPS • Áudio Sincronizado</span>
+        </div>
+        <div class="export-card-body">
+          <h4 class="export-card-title">Vídeo Renderizado em 1080p</h4>
+          <p class="export-card-desc">Renderiza o trecho selecionado da timeline em alta definição com iluminação PBR e áudio gravado.</p>
+        </div>
+        <button class="btn-apple secondary export-action-trigger" id="btn-export-choice-mp4">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polygon points="5 3 19 12 5 21 5 3" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Renderizar Vídeo
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container Apple HIG -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -916,6 +1054,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261004_v8"></script>
+<script type="module" src="/js/main.js?v=20261004_v9"></script>
 </body>
 </html>
