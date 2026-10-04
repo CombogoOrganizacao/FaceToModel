@@ -69,11 +69,12 @@ export class Recorder {
   /* ─── Public API ──────────────────────────────────────────────────────── */
 
   /**
-   * Begin recording with optional microphone selection.
+   * Begin recording with optional microphone selection or custom audio stream.
    * @param {string|null} [audioDeviceId=null] - Specific microphone device ID
+   * @param {MediaStream|null} [customAudioStream=null] - Custom audio stream (e.g. from AudioContext destination)
    * @returns {Promise<void>}
    */
-  async startRecording(audioDeviceId = null) {
+  async startRecording(audioDeviceId = null, customAudioStream = null) {
     if (this.isRecording) {
       console.warn('[Recorder] Already recording.');
       return;
@@ -88,15 +89,17 @@ export class Recorder {
       throw new Error(`[Recorder] canvas.captureStream failed: ${err.message}`);
     }
 
-    // ── 2. Microphone audio track with device selection ──
-    let micStream = null;
-    try {
-      const audioConstraints = audioDeviceId
-        ? { deviceId: { exact: audioDeviceId }, echoCancellation: true, noiseSuppression: true }
-        : { echoCancellation: true, noiseSuppression: true };
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
-    } catch (_) {
-      console.warn('[Recorder] Microphone not available — recording video only.');
+    // ── 2. Microphone or custom audio track ──
+    let micStream = customAudioStream || null;
+    if (!micStream) {
+      try {
+        const audioConstraints = audioDeviceId
+          ? { deviceId: { exact: audioDeviceId }, echoCancellation: true, noiseSuppression: true }
+          : { echoCancellation: true, noiseSuppression: true };
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+      } catch (_) {
+        console.warn('[Recorder] Microphone not available — recording video only.');
+      }
     }
 
     // ── 3. Merge tracks into one stream ──

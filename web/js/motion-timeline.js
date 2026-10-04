@@ -44,16 +44,54 @@ export class MotionTimeline {
     this._lastPlaybackTime = 0;
     this._playbackAnimId = null;
 
+    // Audio & Waveform state
+    this.waveformCanvas = null;
+    /** @type {AudioBuffer|null} */
+    this.audioBuffer = null;
+    /** @type {Blob|null} */
+    this.audioBlob = null;
+    /** @type {Float32Array|null} */
+    this.waveformPeaks = null;
+    /** @type {AudioContext|null} */
+    this._audioContext = null;
+    /** @type {AudioBufferSourceNode|null} */
+    this._audioSourceNode = null;
+    /** @type {MediaRecorder|null} */
+    this._audioRecorder = null;
+    /** @type {Blob[]} */
+    this._audioChunks = [];
+    /** @type {MediaStream|null} */
+    this._audioStream = null;
+    this.isAudioMuted = false;
+
     // Call state change
     this._notify();
+  }
+
+  /* ─── Waveform Canvas Binding ─────────────────────────────────────────── */
+
+  /**
+   * Bind the timeline waveform canvas element.
+   * @param {HTMLCanvasElement} canvas
+   */
+  setWaveformCanvas(canvas) {
+    this.waveformCanvas = canvas;
+    if (this.waveformCanvas && window.ResizeObserver) {
+      const ro = new ResizeObserver(() => {
+        this.drawWaveform();
+      });
+      ro.observe(this.waveformCanvas);
+    }
+    this.drawWaveform();
   }
 
   /* ─── Recording Controls ────────────────────────────────────────────────── */
 
   /**
-   * Start or continue recording motion frames.
+   * Start or continue recording motion frames and synchronized audio.
+   * @param {string|null} [audioDeviceId=null]
    */
-  startRecording() {
+  async startRecording(audioDeviceId = null) {
     this.stopPlayback();
 
     if (this.isPaused) {
@@ -61,6 +99,11 @@ export class MotionTimeline {
       this.isPaused = false;
       this.isRecording = true;
       this._recordStartTime = performance.now();
+      if (this._audioRecorder && this._audioRecorder.state === 'paused') {
+        try {
+          this._audioRecorder.resume();
+        } catch (_) {}
+      }
     } else {
       // New or first take
       if (this.frames.length === 0) {
@@ -69,6 +112,11 @@ export class MotionTimeline {
         this.trimIn = 0;
         this.trimOut = 0;
         this.currentTime = 0;
+        this.audioBuffer = null;
+        this.audioBlob = null;
+        this.waveformPeaks = null;
+        this._audioChunks = [];
+        this.drawWaveform();
       } else {
         // Continuing on existing timeline
         this._accumulatedTime = this.totalDuration;
@@ -76,6 +124,7 @@ export class MotionTimeline {
       this.isRecording = true;
       this.isPaused = false;
       this._recordStartTime = performance.now();
+      await this._startAudioCapture(audioDeviceId);
     }
 
     this._notify();
@@ -88,6 +137,11 @@ export class MotionTimeline {
     if (this.isRecording) {
       this.isPaused = true;
       this._accumulatedTime = this.totalDuration;
+      if (this._audioRecorder && this._audioRecorder.state === 'recording') {
+        try {
+          this._audioRecorder.pause();
+        } catch (_) {}
+      }
       this._notify();
     } else if (this.isPlaying) {
       this.pausePlayback();
@@ -97,12 +151,15 @@ export class MotionTimeline {
   /**
    * Stop recording or playback and rewind playhead to trimIn.
    */
-  stop() {
+  async stop() {
     if (this.isRecording) {
       this.isRecording = false;
       this.isPaused = false;
       this._accumulatedTime = this.totalDuration;
       this.currentTime = this.trimIn;
+
+      await this._stopAudioCapture();
+
       this.scrub(this.trimIn);
       this._notify();
     } else if (this.isPlaying) {
@@ -118,6 +175,7 @@ export class MotionTimeline {
    */
   clear() {
     this.stopPlayback();
+    this._stopAudioCapture();
     this.isRecording = false;
     this.isPaused = false;
     this.frames = [];
@@ -126,6 +184,11 @@ export class MotionTimeline {
     this.trimIn = 0;
     this.trimOut = 0;
     this._accumulatedTime = 0;
+    this.audioBuffer = null;
+    this.audioBlob = null;
+    this.waveformPeaks = null;
+    this._audioChunks = [];
+    this.drawWaveform();
     this._notify();
   }
 
@@ -183,6 +246,7 @@ export class MotionTimeline {
 
     this.isPlaying = true;
     this._lastPlaybackTime = performance.now();
+    this._startAudioPlayback();
     this._playbackLoop();
     this._notify();
   }
@@ -192,6 +256,7 @@ export class MotionTimeline {
    */
   pausePlayback() {
     this.isPlaying = false;
+    this._stopAudioPlayback();
     if (this._playbackAnimId) {
       cancelAnimationFrame(this._playbackAnimId);
       this._playbackAnimId = null;
@@ -204,6 +269,7 @@ export class MotionTimeline {
    */
   stopPlayback() {
     this.pausePlayback();
+    this._stopAudioPlayback();
     this.currentTime = this.trimIn;
     this.scrub(this.trimIn);
     this._notify();
@@ -246,6 +312,14 @@ export class MotionTimeline {
     if (frame && this.onApplyFrame) {
       this.onApplyFrame(frame.blendShapes, frame.rotation);
     }
+
+    if (this.isPlaying) {
+      // Re-anchor audio to scrubbed time during playback
+      this._startAudioPlayback();
+    } else {
+      this._stopAudioPlayback();
+    }
+
     this._notify();
   }
 
@@ -263,8 +337,23 @@ export class MotionTimeline {
     if (this.currentTime < this.trimIn) this.currentTime = this.trimIn;
     if (this.currentTime > this.trimOut) this.currentTime = this.trimOut;
 
+    this.drawWaveform();
     this.scrub(this.currentTime);
     this._notify();
+  }
+
+  /**
+   * Toggle audio playback mute.
+   * @returns {boolean} New mute state
+   */
+  toggleAudioMute() {
+    this.isAudioMuted = !this.isAudioMuted;
+    if (this.isAudioMuted) {
+      this._stopAudioPlayback();
+    } else if (this.isPlaying) {
+      this._startAudioPlayback();
+    }
+    return this.isAudioMuted;
   }
 
   /* ─── Frame Interpolation (Lerp) ────────────────────────────────────────── */
@@ -335,6 +424,253 @@ export class MotionTimeline {
     return { blendShapes: outBlendshapes, rotation: outRotation };
   }
 
+  /* ─── Waveform Rendering & Audio Engine ─────────────────────────────────── */
+
+  /**
+   * Initializes microphone capture for synchronized take recording.
+   * @private
+   */
+  async _startAudioCapture(audioDeviceId = null) {
+    try {
+      if (!this._audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          this._audioContext = new AudioContextClass();
+        }
+      }
+      if (this._audioContext && this._audioContext.state === 'suspended') {
+        await this._audioContext.resume();
+      }
+
+      if (!this._audioStream || !this._audioStream.active) {
+        const constraints = audioDeviceId
+          ? { deviceId: { exact: audioDeviceId }, echoCancellation: true, noiseSuppression: true }
+          : { echoCancellation: true, noiseSuppression: true };
+        this._audioStream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
+      }
+
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        '',
+      ].find((t) => !t || (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t))) || '';
+
+      this._audioRecorder = new MediaRecorder(this._audioStream, mimeType ? { mimeType } : undefined);
+      this._audioChunks = [];
+      this._audioRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          this._audioChunks.push(e.data);
+        }
+      };
+      this._audioRecorder.start(100);
+      console.log(`[MotionTimeline] Gravação de áudio sincronizada iniciada (${mimeType || 'default'}).`);
+    } catch (err) {
+      console.warn('[MotionTimeline] Microfone indisponível para gravação de timeline:', err.message);
+      this._audioRecorder = null;
+    }
+  }
+
+  /**
+   * Stops audio recorder and decodes audio into buffer.
+   * @private
+   */
+  async _stopAudioCapture() {
+    if (!this._audioRecorder || this._audioRecorder.state === 'inactive') {
+      return;
+    }
+
+    try {
+      await new Promise((resolve) => {
+        this._audioRecorder.onstop = resolve;
+        this._audioRecorder.stop();
+      });
+
+      if (this._audioChunks && this._audioChunks.length > 0) {
+        const mime = (this._audioRecorder && this._audioRecorder.mimeType) || 'audio/webm';
+        this.audioBlob = new Blob(this._audioChunks, { type: mime });
+        const arrayBuffer = await this.audioBlob.arrayBuffer();
+
+        if (!this._audioContext) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          this._audioContext = new AudioContextClass();
+        }
+        if (this._audioContext.state === 'suspended') {
+          await this._audioContext.resume();
+        }
+
+        // Support both callback and Promise-based decodeAudioData
+        this.audioBuffer = await new Promise((res, rej) => {
+          this._audioContext.decodeAudioData(
+            arrayBuffer.slice(0),
+            (decoded) => res(decoded),
+            (err) => rej(err)
+          );
+        });
+
+        console.log(`[MotionTimeline] Áudio decodificado: ${this.audioBuffer.duration.toFixed(2)}s, ${this.audioBuffer.numberOfChannels}ch`);
+        this._computeWaveformPeaks();
+        this.drawWaveform();
+      }
+    } catch (err) {
+      console.warn('[MotionTimeline] Falha ao decodificar buffer de áudio gravado:', err.message);
+    }
+  }
+
+  /**
+   * Extract normalized amplitude peaks across timeline for smooth rendering.
+   * @private
+   */
+  _computeWaveformPeaks(numBins = 480) {
+    if (!this.audioBuffer) {
+      this.waveformPeaks = null;
+      return;
+    }
+
+    const rawData = this.audioBuffer.getChannelData(0);
+    const totalSamples = rawData.length;
+    const blockSize = Math.max(1, Math.floor(totalSamples / numBins));
+    const peaks = new Float32Array(numBins);
+
+    for (let i = 0; i < numBins; i++) {
+      const start = i * blockSize;
+      const end = Math.min(start + blockSize, totalSamples);
+      let max = 0;
+      for (let j = start; j < end; j++) {
+        const val = Math.abs(rawData[j]);
+        if (val > max) max = val;
+      }
+      peaks[i] = max;
+    }
+
+    // Normalize
+    let peakMax = 0;
+    for (let i = 0; i < numBins; i++) {
+      if (peaks[i] > peakMax) peakMax = peaks[i];
+    }
+    if (peakMax > 0.001) {
+      for (let i = 0; i < numBins; i++) {
+        peaks[i] = peaks[i] / peakMax;
+      }
+    }
+
+    this.waveformPeaks = peaks;
+  }
+
+  /**
+   * Draw Apple HIG styled audio waveform into the timeline canvas.
+   */
+  drawWaveform() {
+    if (!this.waveformCanvas) return;
+
+    const canvas = this.waveformCanvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = canvas.clientWidth || canvas.parentElement?.clientWidth || 600;
+    const height = canvas.clientHeight || 28;
+    const dpr = window.devicePixelRatio || 1;
+
+    if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+    }
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    if (!this.waveformPeaks || this.waveformPeaks.length === 0) {
+      ctx.restore();
+      return;
+    }
+
+    const peaks = this.waveformPeaks;
+    const numBins = peaks.length;
+    const midY = height / 2;
+    const barWidth = Math.max(1.2, width / numBins);
+
+    // Audio duration vs total timeline duration
+    const audioDur = this.audioBuffer ? this.audioBuffer.duration : this.totalDuration;
+    const durRatio = this.totalDuration > 0 ? Math.min(1.0, audioDur / this.totalDuration) : 1.0;
+    const activeWidth = width * durRatio;
+
+    // Gradient styling: Electric Indigo to Cyan (Apple HIG)
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.7)');
+    gradient.addColorStop(0.5, 'rgba(6, 182, 212, 0.85)');
+    gradient.addColorStop(1, 'rgba(129, 140, 248, 0.7)');
+
+    ctx.fillStyle = gradient;
+
+    for (let i = 0; i < numBins; i++) {
+      const x = (i / numBins) * activeWidth;
+      const amp = peaks[i];
+      const barHeight = Math.max(1.5, amp * (height * 0.78));
+      const y = midY - barHeight / 2;
+
+      // Check if within trim range
+      const timeAtBar = (x / width) * this.totalDuration;
+      const isInsideTrim = timeAtBar >= this.trimIn && timeAtBar <= this.trimOut;
+
+      ctx.globalAlpha = isInsideTrim ? 0.9 : 0.28;
+
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(x, y, Math.max(1, barWidth - 0.5), barHeight, 1);
+      } else {
+        ctx.rect(x, y, Math.max(1, barWidth - 0.5), barHeight);
+      }
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Start audio playback synchronized to current playhead.
+   * @private
+   */
+  _startAudioPlayback() {
+    this._stopAudioPlayback();
+    if (this.isAudioMuted || !this.audioBuffer || !this._audioContext) return;
+
+    try {
+      if (this._audioContext.state === 'suspended') {
+        this._audioContext.resume();
+      }
+
+      this._audioSourceNode = this._audioContext.createBufferSource();
+      this._audioSourceNode.buffer = this.audioBuffer;
+      this._audioSourceNode.connect(this._audioContext.destination);
+
+      const offset = Math.max(0, this.currentTime);
+      const duration = Math.max(0, this.trimOut - offset);
+
+      if (offset < this.audioBuffer.duration && duration > 0) {
+        this._audioSourceNode.start(0, offset, duration);
+      }
+    } catch (e) {
+      console.warn('[MotionTimeline] Erro ao sincronizar áudio:', e.message);
+      this._audioSourceNode = null;
+    }
+  }
+
+  /**
+   * Stop active audio source node.
+   * @private
+   */
+  _stopAudioPlayback() {
+    if (this._audioSourceNode) {
+      try {
+        this._audioSourceNode.stop();
+        this._audioSourceNode.disconnect();
+      } catch (_) {}
+      this._audioSourceNode = null;
+    }
+  }
+
   /* ─── Private Internal Loop & Helpers ───────────────────────────────────── */
 
   _playbackLoop() {
@@ -349,6 +685,7 @@ export class MotionTimeline {
     if (this.currentTime >= this.trimOut) {
       if (this.isLooping) {
         this.currentTime = this.trimIn;
+        this._startAudioPlayback();
       } else {
         this.currentTime = this.trimOut;
         this.pausePlayback();

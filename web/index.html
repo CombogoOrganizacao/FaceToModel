@@ -136,6 +136,7 @@
 
         <div class="tl-track-area" id="tl-track-area">
           <div class="tl-track-ticks" id="tl-ticks"></div>
+          <canvas class="tl-waveform" id="tl-waveform"></canvas>
           <div class="tl-trim-highlight" id="tl-trim-range"></div>
 
           <div class="tl-trim-handle in" id="tl-handle-in" title="Ponto de Entrada (Trim In)">
@@ -155,6 +156,13 @@
 
       <!-- 3. Ações da Timeline (Direita) -->
       <div class="tl-actions">
+        <button class="tl-action-btn secondary" id="btn-tl-audio-mute" title="Ativar/Desativar Áudio da Timeline" aria-label="Mudo">
+          <svg class="svg-icon sm" id="icon-tl-audio" viewBox="0 0 24 24">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
         <button class="tl-action-btn secondary" id="btn-tl-clear" title="Limpar Timeline e Iniciar Novo Take" aria-label="Limpar">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
@@ -290,6 +298,75 @@
               <input type="checkbox" id="chk-show-textures" checked>
               <span class="switch-track"><span class="switch-thumb"></span></span>
             </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Accordion: Auto-Rig Facial ARKit 52 ── -->
+      <div class="accordion-item" id="acc-autorig">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <path d="M12 2a5 5 0 0 1 5 5v3a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v3M8 22h8" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Auto-Rig Facial ARKit 52</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
+          <p style="font-size: 11px; color: var(--label-secondary); margin: 0 0 12px 0; line-height: 1.4;">
+            Geração e calibração procedural de 52 blendshapes ARKit em modelos estáticos (.obj, .fbx, .glb sem morph targets). Isola a geometria craniana para evitar distorções corporais.
+          </p>
+
+          <!-- Sliders de Calibração -->
+          <div class="field-group" style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="range-rig-global" class="select-label" style="margin-bottom: 0;">Intensidade Geral</label>
+              <span id="val-rig-global" style="font-size: 11px; font-family: var(--font-mono); color: var(--accent-blue);">1.0x</span>
+            </div>
+            <input type="range" id="range-rig-global" min="0.2" max="2.5" step="0.1" value="1.0" class="apple-slider" />
+          </div>
+
+          <div class="field-group" style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="range-rig-mouth" class="select-label" style="margin-bottom: 0;">Boca e Mandíbula</label>
+              <span id="val-rig-mouth" style="font-size: 11px; font-family: var(--font-mono); color: var(--accent-blue);">1.0x</span>
+            </div>
+            <input type="range" id="range-rig-mouth" min="0.2" max="2.5" step="0.1" value="1.0" class="apple-slider" />
+          </div>
+
+          <div class="field-group" style="margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="range-rig-eyes" class="select-label" style="margin-bottom: 0;">Olhos e Piscadas</label>
+              <span id="val-rig-eyes" style="font-size: 11px; font-family: var(--font-mono); color: var(--accent-blue);">1.0x</span>
+            </div>
+            <input type="range" id="range-rig-eyes" min="0.2" max="2.5" step="0.1" value="1.0" class="apple-slider" />
+          </div>
+
+          <div class="field-group" style="margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="range-rig-brows" class="select-label" style="margin-bottom: 0;">Sobrancelhas</label>
+              <span id="val-rig-brows" style="font-size: 11px; font-family: var(--font-mono); color: var(--accent-blue);">1.0x</span>
+            </div>
+            <input type="range" id="range-rig-brows" min="0.2" max="2.5" step="0.1" value="1.0" class="apple-slider" />
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button class="btn-apple" id="btn-rig-rebuild" style="font-size: 11px; padding: 7px 10px; justify-content: center; background: rgba(99, 102, 241, 0.2); border: 0.5px solid rgba(99, 102, 241, 0.4); color: #fff;">
+              <svg class="svg-icon sm" viewBox="0 0 24 24" style="margin-right: 4px; width: 14px; height: 14px;">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Recalcular Rig
+            </button>
+            <button class="btn-apple" id="btn-rig-test" style="font-size: 11px; padding: 7px 10px; justify-content: center; background: rgba(16, 185, 129, 0.2); border: 0.5px solid rgba(16, 185, 129, 0.4); color: #fff;">
+              <svg class="svg-icon sm" viewBox="0 0 24 24" style="margin-right: 4px; width: 14px; height: 14px;">
+                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+              </svg>
+              Ciclo de Teste
+            </button>
           </div>
         </div>
       </div>
@@ -839,6 +916,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261004_v7"></script>
+<script type="module" src="/js/main.js?v=20261004_v8"></script>
 </body>
 </html>

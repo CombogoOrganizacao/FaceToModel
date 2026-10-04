@@ -82,6 +82,7 @@ function bootstrap() {
     setupDrawer();
     setupAccordions();
     setupModelPresets();
+    setupAutoRigControls();
     setupShading();
     setupBackground();
     setupMediaDevices();
@@ -330,6 +331,171 @@ function setupModelPresets() {
       await loadModel(url, filename);
     }
   });
+}
+
+/* ─── Auto-Rig Facial ARKit 52 Controls ──────────────────────────────────── */
+
+let isTestCycleRunning = false;
+let testCycleAnimId = null;
+
+function setupAutoRigControls() {
+  const rangeGlobal = $('range-rig-global');
+  const valGlobal = $('val-rig-global');
+  const rangeMouth = $('range-rig-mouth');
+  const valMouth = $('val-rig-mouth');
+  const rangeEyes = $('range-rig-eyes');
+  const valEyes = $('val-rig-eyes');
+  const rangeBrows = $('range-rig-brows');
+  const valBrows = $('val-rig-brows');
+
+  const btnRebuild = $('btn-rig-rebuild');
+  const btnTest = $('btn-rig-test');
+
+  if (rangeGlobal && valGlobal) {
+    rangeGlobal.addEventListener('input', () => {
+      valGlobal.textContent = `${parseFloat(rangeGlobal.value).toFixed(1)}x`;
+    });
+  }
+  if (rangeMouth && valMouth) {
+    rangeMouth.addEventListener('input', () => {
+      valMouth.textContent = `${parseFloat(rangeMouth.value).toFixed(1)}x`;
+    });
+  }
+  if (rangeEyes && valEyes) {
+    rangeEyes.addEventListener('input', () => {
+      valEyes.textContent = `${parseFloat(rangeEyes.value).toFixed(1)}x`;
+    });
+  }
+  if (rangeBrows && valBrows) {
+    rangeBrows.addEventListener('input', () => {
+      valBrows.textContent = `${parseFloat(rangeBrows.value).toFixed(1)}x`;
+    });
+  }
+
+  // Recalcular Rig
+  if (btnRebuild) {
+    btnRebuild.addEventListener('click', () => {
+      if (!renderer || !renderer.getModel()) {
+        showToast('Nenhum modelo 3D carregado para calibrar.', 'error');
+        return;
+      }
+
+      const globalIntensity = parseFloat(rangeGlobal?.value || '1.0');
+      const mouthIntensity = parseFloat(rangeMouth?.value || '1.0');
+      const eyeIntensity = parseFloat(rangeEyes?.value || '1.0');
+      const browIntensity = parseFloat(rangeBrows?.value || '1.0');
+
+      const count = renderer.rebuildBlendshapes({
+        globalIntensity,
+        mouthIntensity,
+        eyeIntensity,
+        browIntensity,
+      });
+
+      if (count > 0) {
+        const coverageEl = $('model-coverage');
+        if (coverageEl) {
+          coverageEl.textContent = `${renderer.blendshapeCoverage} blendshapes mapeados`;
+        }
+        showToast(`Auto-Rig atualizado com ${count} expressões faciais ARKit.`, 'success');
+      } else {
+        showToast('Nenhuma malha facial elegível para auto-rig encontrada neste modelo.', 'info');
+      }
+    });
+  }
+
+  // Ciclo de Teste ARKit
+  if (btnTest) {
+    btnTest.addEventListener('click', () => {
+      if (!renderer || !renderer.getModel()) {
+        showToast('Nenhum modelo carregado para testar expressões.', 'info');
+        return;
+      }
+
+      if (isTestCycleRunning) {
+        isTestCycleRunning = false;
+        if (testCycleAnimId) cancelAnimationFrame(testCycleAnimId);
+        testCycleAnimId = null;
+        renderer.applyBlendShapes({}, null);
+        btnTest.innerHTML = `
+          <svg class="svg-icon sm" viewBox="0 0 24 24" style="margin-right: 4px; width: 14px; height: 14px;">
+            <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+          </svg>
+          Ciclo de Teste
+        `;
+        showToast('Ciclo de teste interrompido.', 'info');
+        return;
+      }
+
+      isTestCycleRunning = true;
+      btnTest.innerHTML = `
+        <svg class="svg-icon sm" viewBox="0 0 24 24" style="margin-right: 4px; width: 14px; height: 14px;">
+          <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+        </svg>
+        Parar Teste
+      `;
+      showToast('Iniciando ciclo de teste procedural ARKit (5 segundos)...', 'info');
+
+      const startTime = performance.now();
+      const durationMs = 5000;
+
+      const runStep = () => {
+        if (!isTestCycleRunning) return;
+
+        const elapsed = performance.now() - startTime;
+        if (elapsed >= durationMs) {
+          isTestCycleRunning = false;
+          renderer.applyBlendShapes({}, null);
+          btnTest.innerHTML = `
+            <svg class="svg-icon sm" viewBox="0 0 24 24" style="margin-right: 4px; width: 14px; height: 14px;">
+              <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"/>
+            </svg>
+            Ciclo de Teste
+          `;
+          showToast('Ciclo de teste concluído com sucesso.', 'success');
+          return;
+        }
+
+        const t = elapsed / 1000;
+        const testShapes = {};
+
+        // Phase 1 (0.0s - 1.0s): Abertura de Mandíbula
+        if (t < 1.0) {
+          const p = Math.sin((t / 1.0) * Math.PI);
+          testShapes.jawOpen = 0.9 * p;
+        }
+        // Phase 2 (1.0s - 2.2s): Sorrisos bilaterais
+        else if (t < 2.2) {
+          const p = Math.sin(((t - 1.0) / 1.2) * Math.PI);
+          testShapes.mouthSmileLeft = 0.85 * p;
+          testShapes.mouthSmileRight = 0.85 * p;
+        }
+        // Phase 3 (2.2s - 3.2s): Piscadas de olhos
+        else if (t < 3.2) {
+          const p = Math.sin(((t - 2.2) / 1.0) * Math.PI);
+          testShapes.eyeBlinkLeft = 1.0 * p;
+          testShapes.eyeBlinkRight = 1.0 * p;
+        }
+        // Phase 4 (3.2s - 4.2s): Elevação de sobrancelhas
+        else if (t < 4.2) {
+          const p = Math.sin(((t - 3.2) / 1.0) * Math.PI);
+          testShapes.browInnerUp = 0.8 * p;
+          testShapes.browOuterUpLeft = 0.75 * p;
+          testShapes.browOuterUpRight = 0.75 * p;
+        }
+        // Phase 5 (4.2s - 5.0s): Bico / Mouth Pucker
+        else {
+          const p = Math.sin(((t - 4.2) / 0.8) * Math.PI);
+          testShapes.mouthPucker = 0.8 * p;
+        }
+
+        renderer.applyBlendShapes(testShapes, null);
+        testCycleAnimId = requestAnimationFrame(runStep);
+      };
+
+      testCycleAnimId = requestAnimationFrame(runStep);
+    });
+  }
 }
 
 /* ─── Shading & Lighting Modes (Blender Viewport Shading) ─────────────────── */
@@ -901,6 +1067,7 @@ function setupTimeline() {
   const handleIn = $('tl-handle-in');
   const handleOut = $('tl-handle-out');
   const playhead = $('tl-playhead');
+  const waveformCanvas = $('tl-waveform');
 
   motionTimeline = new MotionTimeline({
     onApplyFrame: (blendShapes, rotation) => {
@@ -960,14 +1127,18 @@ function setupTimeline() {
     },
   });
 
+  if (waveformCanvas) {
+    motionTimeline.setWaveformCanvas(waveformCanvas);
+  }
+
   // Botão Gravar / Continuar
-  btnRec.addEventListener('click', () => {
+  btnRec.addEventListener('click', async () => {
     if (motionTimeline.isRecording && !motionTimeline.isPaused) {
       motionTimeline.pause();
       showToast('Gravação pausada na timeline', 'info');
     } else {
-      motionTimeline.startRecording();
-      showToast(motionTimeline.isPaused ? 'Continuando gravação...' : 'Gravando movimentos na timeline...', 'success');
+      await motionTimeline.startRecording(selectedAudioDeviceId);
+      showToast(motionTimeline.isPaused ? 'Continuando gravação...' : 'Gravando movimentos e áudio na timeline...', 'success');
     }
   });
 
@@ -986,7 +1157,7 @@ function setupTimeline() {
   // Botão Play / Pause
   btnPlay.addEventListener('click', () => {
     if (motionTimeline.frames.length < 2) {
-      showToast('Grave movimentos primeiro usando o botão Gravar (⏺)', 'info');
+      showToast('Grave movimentos primeiro usando o botão Gravar na timeline.', 'info');
       return;
     }
     motionTimeline.togglePlay();
@@ -996,6 +1167,34 @@ function setupTimeline() {
   btnLoop.addEventListener('click', () => {
     motionTimeline.setLooping(!motionTimeline.isLooping);
   });
+
+  // Botão Áudio Mudo / Desmudo
+  const btnAudioMute = $('btn-tl-audio-mute');
+  const iconAudio = $('icon-tl-audio');
+  if (btnAudioMute) {
+    btnAudioMute.addEventListener('click', () => {
+      const isMuted = motionTimeline.toggleAudioMute();
+      btnAudioMute.classList.toggle('active', isMuted);
+      if (isMuted) {
+        if (iconAudio) {
+          iconAudio.innerHTML = `
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>
+            <line x1="23" y1="9" x2="17" y2="15" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+            <line x1="17" y1="9" x2="23" y2="15" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+          `;
+        }
+        showToast('Áudio da timeline silenciado', 'info');
+      } else {
+        if (iconAudio) {
+          iconAudio.innerHTML = `
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          `;
+        }
+        showToast('Áudio da timeline ativado', 'info');
+      }
+    });
+  }
 
   // Botão Limpar
   btnClear.addEventListener('click', () => {
@@ -1243,8 +1442,27 @@ function setupTimeline() {
 
       await new Promise((r) => setTimeout(r, 60)); // Permite ao WebGL aplicar o buffer 1080p
 
-      // 3. Inicia o Recorder em 60 FPS
-      await recorder.startRecording(selectedAudioDeviceId);
+      // 3. Inicia o Recorder em 60 FPS (com mix de áudio gravado na timeline, se houver)
+      let customAudioStream = null;
+      let tempAudioSource = null;
+      if (motionTimeline.audioBuffer && motionTimeline._audioContext) {
+        try {
+          const actx = motionTimeline._audioContext;
+          if (actx.state === 'suspended') await actx.resume();
+          const dest = actx.createMediaStreamDestination();
+          tempAudioSource = actx.createBufferSource();
+          tempAudioSource.buffer = motionTimeline.audioBuffer;
+          tempAudioSource.connect(dest);
+          const offset = Math.max(0, motionTimeline.trimIn);
+          const trimDur = Math.max(0.1, motionTimeline.trimOut - motionTimeline.trimIn);
+          tempAudioSource.start(0, offset, trimDur);
+          customAudioStream = dest.stream;
+        } catch (e) {
+          console.warn('[Export MP4] Erro ao preparar áudio sincronizado:', e.message);
+        }
+      }
+
+      await recorder.startRecording(selectedAudioDeviceId, customAudioStream);
 
       const trimDuration = Math.max(0.1, motionTimeline.trimOut - motionTimeline.trimIn);
       const startT = performance.now();
@@ -1273,6 +1491,10 @@ function setupTimeline() {
           if (gaugeEta) gaugeEta.textContent = 'Finalizando...';
 
           const url = await recorder.stopRecording();
+          if (tempAudioSource) {
+            try { tempAudioSource.stop(); tempAudioSource.disconnect(); } catch (_) {}
+            tempAudioSource = null;
+          }
 
           // Restaura a resolução da tela
           if (renderer) {
@@ -1320,6 +1542,10 @@ function setupTimeline() {
       requestAnimationFrame(renderStep);
     } catch (err) {
       console.error('[Export Error]', err);
+      if (tempAudioSource) {
+        try { tempAudioSource.stop(); tempAudioSource.disconnect(); } catch (_) {}
+        tempAudioSource = null;
+      }
       if (renderer) renderer.setExport1080p(false);
       if (renderModal) renderModal.classList.remove('open');
       btnExport.disabled = false;

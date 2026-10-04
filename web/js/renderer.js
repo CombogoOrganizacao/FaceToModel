@@ -24,7 +24,7 @@ import { MTLLoader }     from 'three/addons/loaders/MTLLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
-import { ensureModelBlendshapes } from './blendshape-synthesizer.js';
+import { ensureModelBlendshapes, rebuildModelBlendshapes } from './blendshape-synthesizer.js';
 import { modelCache } from './model-cache.js';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
@@ -750,6 +750,38 @@ export class Renderer {
         });
       }
     });
+  }
+
+  /**
+   * Rebuild or scale synthesized ARKit blendshapes on the active model.
+   * @param {Object} [options] - Calibration intensities { globalIntensity, mouthIntensity, eyeIntensity, browIntensity }
+   * @returns {number} Count of blendshapes synthesized
+   */
+  rebuildBlendshapes(options = {}) {
+    if (!this._model) return 0;
+
+    const count = rebuildModelBlendshapes(this._model, options);
+    if (count > 0) {
+      const updated = buildModelMap(this._model);
+      this._modelMap = updated.map;
+      this.blendshapeCoverage = updated.coverage;
+
+      // Ensure morph influences array is initialized
+      this._model.traverse((node) => {
+        if (node.isMesh && node.geometry && node.geometry.morphAttributes) {
+          const morphPos = node.geometry.morphAttributes.position;
+          if (morphPos && morphPos.length > 0) {
+            if (typeof node.updateMorphTargets === 'function') {
+              node.updateMorphTargets();
+            } else {
+              node.morphTargetInfluences = new Array(morphPos.length).fill(0);
+            }
+          }
+        }
+      });
+      console.log(`[Renderer] Auto-Rig facial atualizado: ${count} blendshapes ARKit. Cobertura: ${this.blendshapeCoverage}/52`);
+    }
+    return count;
   }
 
   /**

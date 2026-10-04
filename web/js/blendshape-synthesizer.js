@@ -434,31 +434,141 @@ export function findFaceMesh(model) {
 }
 
 /**
- * Synthesizes all 52 Apple ARKit blendshapes onto the provided mesh.
+ * Intelligently analyzes the mesh to isolate the cranial/head region and determine facing orientation.
+ * Handles full-body avatars, standalone busts, and inverted Z-axis models seamlessly.
+ *
  * @param {THREE.Mesh} mesh
+ * @param {THREE.Bone|null} [headBone]
+ * @returns {Object} Head region bounds, scale, and orientation parameters
+ */
+export function analyzeHeadRegion(mesh, headBone = null) {
+  const geom = mesh.geometry;
+  const posAttr = geom.attributes.position;
+  const count = posAttr.count;
+
+  geom.computeBoundingBox();
+  const box = geom.boundingBox;
+  const fullWidth = Math.max(0.001, box.max.x - box.min.x);
+  const fullHeight = Math.max(0.001, box.max.y - box.min.y);
+  const fullDepth = Math.max(0.001, box.max.z - box.min.z);
+
+  // 1. Detect if model is full-body (aspect ratio tall)
+  const isFullBody = fullHeight > fullWidth * 1.5;
+
+  let headMinY, headMaxY;
+  let headMinX = box.min.x, headMaxX = box.max.x;
+  let headMinZ = box.min.z, headMaxZ = box.max.z;
+
+  if (headBone) {
+    const boneWorldPos = new THREE.Vector3();
+    headBone.getWorldPosition(boneWorldPos);
+    const boneLocalPos = mesh.worldToLocal(boneWorldPos);
+    const radius = fullHeight * 0.16;
+    headMinY = boneLocalPos.y - radius * 0.7;
+    headMaxY = boneLocalPos.y + radius * 1.3;
+  } else if (isFullBody) {
+    // Top 22% of character represents head and face
+    headMinY = box.min.y + fullHeight * 0.76;
+    headMaxY = box.max.y;
+  } else {
+    // Bust / standalone head
+    headMinY = box.min.y;
+    headMaxY = box.max.y;
+  }
+
+  // Refine bounds to head vertices only
+  let hMinX = Infinity, hMaxX = -Infinity;
+  let hMinZ = Infinity, hMaxZ = -Infinity;
+  let headVertCount = 0;
+
+  for (let i = 0; i < count; i++) {
+    const y = posAttr.getY(i);
+    if (y >= headMinY && y <= headMaxY) {
+      const x = posAttr.getX(i);
+      const z = posAttr.getZ(i);
+      if (x < hMinX) hMinX = x;
+      if (x > hMaxX) hMaxX = x;
+      if (z < hMinZ) hMinZ = z;
+      if (z > hMaxZ) hMaxZ = z;
+      headVertCount++;
+    }
+  }
+
+  if (headVertCount > 30) {
+    headMinX = hMinX;
+    headMaxX = hMaxX;
+    headMinZ = hMinZ;
+    headMaxZ = hMaxZ;
+  }
+
+  const headWidth = Math.max(0.001, headMaxX - headMinX);
+  const headHeight = Math.max(0.001, headMaxY - headMinY);
+  const headDepth = Math.max(0.001, headMaxZ - headMinZ);
+
+  // 2. Facing direction: detect whether facial features protrude along +Z or -Z
+  const midZ = (headMinZ + headMaxZ) * 0.5;
+  const midY = (headMinY + headMaxY) * 0.5;
+  let plusZConvexity = 0;
+  let minusZConvexity = 0;
+
+  for (let i = 0; i < count; i++) {
+    const y = posAttr.getY(i);
+    if (y >= midY - headHeight * 0.25 && y <= midY + headHeight * 0.25) {
+      const z = posAttr.getZ(i);
+      if (z > midZ) plusZConvexity = Math.max(plusZConvexity, z - midZ);
+      else minusZConvexity = Math.max(minusZConvexity, midZ - z);
+    }
+  }
+
+  const forwardSign = plusZConvexity >= minusZConvexity ? 1 : -1;
+
+  return {
+    headMinX, headMaxX,
+    headMinY, headMaxY,
+    headMinZ, headMaxZ,
+    headWidth, headHeight, headDepth,
+    scale: headHeight,
+    forwardSign,
+    isFullBody
+  };
+}
+
+/**
+ * Synthesizes all 52 Apple ARKit blendshapes onto the provided mesh with intelligent anatomical framing.
+ *
+ * @param {THREE.Mesh} mesh
+ * @param {Object} [options]
+ * @param {number} [options.globalIntensity] - Global deformation scale (default 1.0)
+ * @param {number} [options.mouthIntensity] - Mouth and jaw deformation multiplier (default 1.0)
+ * @param {number} [options.eyeIntensity] - Eye and eyelid deformation multiplier (default 1.0)
+ * @param {number} [options.browIntensity] - Brow deformation multiplier (default 1.0)
+ * @param {THREE.Bone|null} [options.headBone] - Optional skeletal head bone for precise cranial isolation
  * @returns {number} Count of blendshapes synthesized
  */
-export function synthesizeARKitBlendshapes(mesh) {
+export function synthesizeARKitBlendshapes(mesh, options = {}) {
   if (!mesh || !mesh.geometry) return 0;
 
   const geom = mesh.geometry;
   const posAttr = geom.attributes.position;
   if (!posAttr) return 0;
 
-  // 1. Calculate local mesh bounds
-  geom.computeBoundingBox();
-  const box = geom.boundingBox;
-  const minX = box.min.x;
-  const maxX = box.max.x;
-  const minY = box.min.y;
-  const maxY = box.max.y;
-  const minZ = box.min.z;
-  const maxZ = box.max.z;
+  const {
+    globalIntensity = 1.0,
+    mouthIntensity = 1.0,
+    eyeIntensity = 1.0,
+    browIntensity = 1.0,
+    headBone = null
+  } = options;
 
-  const width = Math.max(0.001, maxX - minX);
-  const height = Math.max(0.001, maxY - minY);
-  const depth = Math.max(0.001, maxZ - minZ);
-  const scale = height; // base scale for anatomical displacements
+  // 1. Analyze and isolate the cranial/head region
+  const head = analyzeHeadRegion(mesh, headBone);
+
+  const headCenterX = (head.headMinX + head.headMaxX) * 0.5;
+  const halfWidth = head.headWidth * 0.5;
+  const headHeight = head.headHeight;
+  const headDepth = head.headDepth;
+  const baseScale = head.scale * globalIntensity;
+  const forwardSign = head.forwardSign;
 
   const vertCount = posAttr.count;
 
@@ -473,7 +583,7 @@ export function synthesizeARKitBlendshapes(mesh) {
   for (const stdName of STANDARD_BLENDSHAPES) {
     const faceCapName = FACECAP_MAP[stdName] || stdName;
 
-    // Check if mesh already has this morph target (either standard or facecap name)
+    // Check if mesh already has this morph target
     if (mesh.morphTargetDictionary[stdName] !== undefined || mesh.morphTargetDictionary[faceCapName] !== undefined) {
       continue;
     }
@@ -481,25 +591,43 @@ export function synthesizeARKitBlendshapes(mesh) {
     const rule = DEFORMATION_RULES[stdName];
     if (!rule) continue;
 
+    // Determine category multiplier
+    let catMultiplier = 1.0;
+    if (stdName.startsWith('brow')) catMultiplier = browIntensity;
+    else if (stdName.startsWith('eye')) catMultiplier = eyeIntensity;
+    else if (stdName.startsWith('mouth') || stdName.startsWith('jaw')) catMultiplier = mouthIntensity;
+
+    const effectiveScale = baseScale * catMultiplier;
+
     // Create delta buffer
     const deltaBuffer = new Float32Array(vertCount * 3);
     let hasMovement = false;
 
     for (let i = 0; i < vertCount; i++) {
-      const vx = posAttr.getX(i);
       const vy = posAttr.getY(i);
+
+      // Only deform vertices within the cranial/head elevation window
+      if (vy < head.headMinY - headHeight * 0.05 || vy > head.headMaxY + headHeight * 0.05) {
+        continue;
+      }
+
+      const vx = posAttr.getX(i);
       const vz = posAttr.getZ(i);
 
-      // Normalized coordinates: u in [-1, 1], v in [0, 1], w in [0, 1]
-      const u = ((vx - (minX + maxX) * 0.5) / (width * 0.5));
-      const v = (vy - minY) / height;
-      const w = (vz - minZ) / depth;
+      // Normalized coordinates within the isolated cranial frame
+      // u in [-1, 1], v in [0, 1] (chin to forehead), w in [0, 1] (back to nose)
+      const u = (vx - headCenterX) / halfWidth;
+      const v = (vy - head.headMinY) / headHeight;
+      const w = forwardSign > 0
+        ? (vz - head.headMinZ) / headDepth
+        : (head.headMaxZ - vz) / headDepth;
 
-      const delta = rule(u, v, w, scale);
+      const delta = rule(u, v, w, effectiveScale);
       if (delta) {
         deltaBuffer[i * 3 + 0] = delta[0];
         deltaBuffer[i * 3 + 1] = delta[1];
-        deltaBuffer[i * 3 + 2] = delta[2];
+        // Flip Z delta if model faces negative Z
+        deltaBuffer[i * 3 + 2] = delta[2] * forwardSign;
         hasMovement = true;
       }
     }
@@ -517,26 +645,48 @@ export function synthesizeARKitBlendshapes(mesh) {
   }
 
   if (addedCount > 0) {
-    // Allocate influences array as standard Array (required by Three.js WebGLMorph renderer)
     const totalTargets = geom.morphAttributes.position.length;
     mesh.morphTargetInfluences = new Array(totalTargets).fill(0);
     if (typeof mesh.updateMorphTargets === 'function') {
       mesh.updateMorphTargets();
     }
     geom.needsUpdate = true;
-    console.log(`[Synthesizer] Sintetizados ${addedCount} novos blendshapes ARKit na malha "${mesh.name || 'Face'}"`);
+    mesh.userData.autoRigSettings = { globalIntensity, mouthIntensity, eyeIntensity, browIntensity };
+    console.log(`[Auto-Rig] Sintetizados com sucesso ${addedCount} blendshapes ARKit na malha "${mesh.name || 'Face'}"`);
   }
 
   return addedCount;
 }
 
 /**
+ * Re-synthesizes or scales blendshapes on the model with custom user rig settings.
+ *
+ * @param {THREE.Object3D} model
+ * @param {Object} [options]
+ * @returns {number}
+ */
+export function rebuildModelBlendshapes(model, options = {}) {
+  const faceMesh = findFaceMesh(model);
+  if (!faceMesh || !faceMesh.geometry) return 0;
+
+  // Clear existing synthesized morph targets if present
+  const geom = faceMesh.geometry;
+  if (geom.morphAttributes && geom.morphAttributes.position) {
+    geom.morphAttributes.position = [];
+  }
+  faceMesh.morphTargetDictionary = {};
+
+  return synthesizeARKitBlendshapes(faceMesh, options);
+}
+
+/**
  * Checks model and automatically synthesizes 52 ARKit blendshapes if absent.
  * @param {THREE.Object3D} model
  * @param {number} currentCoverage
+ * @param {Object} [options]
  * @returns {number} Total count of blendshapes added
  */
-export function ensureModelBlendshapes(model, currentCoverage = 0) {
+export function ensureModelBlendshapes(model, currentCoverage = 0, options = {}) {
   if (currentCoverage >= 40) {
     // Already sufficiently rigged with blendshapes
     return 0;
@@ -548,5 +698,5 @@ export function ensureModelBlendshapes(model, currentCoverage = 0) {
     return 0;
   }
 
-  return synthesizeARKitBlendshapes(faceMesh);
+  return synthesizeARKitBlendshapes(faceMesh, options);
 }
