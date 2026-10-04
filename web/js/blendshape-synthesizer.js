@@ -12,6 +12,7 @@
  * @module blendshape-synthesizer
  */
 
+import * as THREE from 'three';
 import { FACECAP_MAP, STANDARD_BLENDSHAPES } from './blendshape-mapper.js';
 
 /**
@@ -516,9 +517,12 @@ export function synthesizeARKitBlendshapes(mesh) {
   }
 
   if (addedCount > 0) {
-    // Allocate influences array
+    // Allocate influences array as standard Array (required by Three.js WebGLMorph renderer)
     const totalTargets = geom.morphAttributes.position.length;
-    mesh.morphTargetInfluences = new Float32Array(totalTargets);
+    mesh.morphTargetInfluences = new Array(totalTargets).fill(0);
+    if (typeof mesh.updateMorphTargets === 'function') {
+      mesh.updateMorphTargets();
+    }
     geom.needsUpdate = true;
     console.log(`[Synthesizer] Sintetizados ${addedCount} novos blendshapes ARKit na malha "${mesh.name || 'Face'}"`);
   }

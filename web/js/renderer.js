@@ -564,6 +564,22 @@ export class Renderer {
       }
     }
 
+    // Ensure all meshes with morph attributes have valid morphTargetInfluences arrays
+    model.traverse((node) => {
+      if (node.isMesh && node.geometry && node.geometry.morphAttributes) {
+        const morphPos = node.geometry.morphAttributes.position;
+        if (morphPos && morphPos.length > 0) {
+          if (!node.morphTargetInfluences || !Array.isArray(node.morphTargetInfluences)) {
+            if (typeof node.updateMorphTargets === 'function') {
+              node.updateMorphTargets();
+            } else {
+              node.morphTargetInfluences = new Array(morphPos.length).fill(0);
+            }
+          }
+        }
+      }
+    });
+
     this._modelMap          = map;
     this.blendshapeCoverage = coverage;
 

@@ -14,6 +14,9 @@
  * @module main
  */
 
+import * as THREE from 'three';
+window.THREE = THREE;
+
 import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
 import { MotionTimeline } from './motion-timeline.js';
