@@ -315,6 +315,12 @@ export class Renderer {
         node.castShadow = true;
         node.receiveShadow = true;
         if (node.material) {
+          if (!node.userData.originalMaterial) {
+            node.userData.originalMaterial = Array.isArray(node.material)
+              ? node.material.map((mat) => mat.clone())
+              : node.material.clone();
+          }
+
           const mats = Array.isArray(node.material) ? node.material : [node.material];
           const newMats = mats.map((m) => {
             m.side = THREE.DoubleSide;
@@ -329,30 +335,33 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 2. Fios de Cabelo do MetaHuman (CardsMesh no padrão Unreal Engine 5.8 / Marschner Dual-Lobe)
+            // 2. Fios de Cabelo do MetaHuman (CardsMesh no padrão Unreal Engine Groom Cards)
             else if (isMetaHuman && (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow')))) {
-              // Conectar Atlas de Micro-Fios Procedurais com Cutícula e Tapering
-              const hairGroom = this._createProceduralHairStrands();
               const originalNormal = m.normalMap || null;
+              // Preservar a textura original dos cards do MetaHuman (Unreal Engine baked PNG)
+              const hasOriginalMap = Boolean(m.map);
+              const hairGroom = hasOriginalMap ? null : this._createProceduralHairStrands();
+              const diffuseMap = hasOriginalMap ? m.map : hairGroom.map;
+              const alphaMap = m.alphaMap || (hasOriginalMap ? m.map : hairGroom.alphaMap);
+
+              if (diffuseMap) diffuseMap.colorSpace = THREE.SRGBColorSpace;
 
               const hairMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x281c14), // Base de melanina espresso profunda e quente
-                map: hairGroom.map,
-                alphaMap: hairGroom.alphaMap,
+                color: hasOriginalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x281c14),
+                map: diffuseMap,
+                alphaMap: alphaMap,
                 normalMap: originalNormal,
-                roughness: 0.32, // Fibra suave e sedosa de queratina
-                metalness: 0.0,  // Estritamente não metálico
-                clearcoat: 0.55, // Lobo R primário: cutícula superficial nítida
-                clearcoatRoughness: 0.18,
-                specularIntensity: 0.95, // Especularidade nítida dos fios
-                specularColor: new THREE.Color(0xb5825a), // Reflexo secundário TRT córtex com calor de melanina
-                anisotropy: 0.92, // Anisotropia acentuada ao longo da extensão das fibras
-                anisotropyRotation: Math.PI / 2,
-                sheen: 0.85, // Dispersão de luz transmitida interna entre os fios
+                roughness: 0.45, // PBR queratina natural do Unreal Hair Shader
+                metalness: 0.0,
+                clearcoat: 0.40,
+                clearcoatRoughness: 0.22,
+                specularIntensity: 0.70,
+                specularColor: new THREE.Color(0xb5825a),
+                sheen: 0.45,
                 sheenColor: new THREE.Color(0x52321c),
-                sheenRoughness: 0.28,
+                sheenRoughness: 0.30,
                 transparent: true,
-                alphaTest: 0.08, // Recorte fino anti-aliasing preservando 100% da volumetria
+                alphaTest: 0.05, // Recorte fino anti-aliasing preservando 100% da volumetria dos fios originais
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
@@ -360,40 +369,39 @@ export class Renderer {
                 name: m.name,
               });
 
-              // Injeção de Shader Customizado: Marschner Dual-Lobe e Micro-Perturbação de Fios
-              hairMat.onBeforeCompile = (shader) => {
-                shader.fragmentShader = shader.fragmentShader.replace(
-                  '#include <roughnessmap_fragment>',
-                  `#include <roughnessmap_fragment>
-                  // Procedural micro-strand normal shift along hair fibers
-                  vec2 strandCoord = vUv * vec2(240.0, 1.0);
-                  float strandSheen = sin(strandCoord.x * 3.14159) * 0.08;
-                  roughnessFactor = clamp(roughnessFactor + strandSheen, 0.18, 0.60);
-                  `
-                );
+              // Compatibilidade com texturas de Groom do Unreal Engine
+              node.userData.groomSlots = {
+                diffuse: diffuseMap,
+                alpha: alphaMap,
+                depth: null,
+                rootTip: null,
+                normal: originalNormal,
               };
 
-              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.60;
+              if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.55;
               return hairMat;
             }
-            // 3. Sobrancelhas do MetaHuman (CardsMesh — Procedural Micro-Strand Atlas + PolygonOffset)
+            // 3. Sobrancelhas do MetaHuman (CardsMesh — Preservando Textura Original ou Procedural Fallback)
             else if (isMetaHuman && matName.includes('eyebrow')) {
-              const browGroom = this._createProceduralEyebrowTextures();
+              const hasOriginalMap = Boolean(m.map);
+              const browGroom = hasOriginalMap ? null : this._createProceduralEyebrowTextures();
+              const diffuseMap = hasOriginalMap ? m.map : browGroom.map;
+              const alphaMap = m.alphaMap || (hasOriginalMap ? m.map : browGroom.alphaMap);
+
+              if (diffuseMap) diffuseMap.colorSpace = THREE.SRGBColorSpace;
 
               const browMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x1a120c),
-                map: browGroom.map,
-                alphaMap: browGroom.alphaMap,
-                roughness: 0.36,
+                color: hasOriginalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x1a120c),
+                map: diffuseMap,
+                alphaMap: alphaMap,
+                roughness: 0.38,
                 metalness: 0.0,
-                specularIntensity: 0.70,
+                specularIntensity: 0.65,
                 specularColor: new THREE.Color(0x6e482e),
-                anisotropy: 0.80,
-                anisotropyRotation: Math.PI / 2,
-                sheen: 0.50,
+                sheen: 0.45,
                 sheenColor: new THREE.Color(0x3e2314),
                 transparent: true,
-                alphaTest: 0.06,
+                alphaTest: 0.05,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -403,26 +411,38 @@ export class Renderer {
                 side: THREE.DoubleSide,
                 name: m.name,
               });
+
+              node.userData.groomSlots = {
+                diffuse: diffuseMap,
+                alpha: alphaMap,
+                normal: m.normalMap || null,
+              };
+
               if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.50;
               return browMat;
             }
-            // 4. Cílios do MetaHuman (SKM_bo_FaceMesh.001_LashMat / SKM_asha_FaceMesh.001_LashMat — Fios Tapered com Alpha Atlas)
+            // 4. Cílios do MetaHuman (Preservando Textura Original ou Procedural Fallback)
             else if (isMetaHuman && (matName.includes('eyelashes') || matName.includes('lashmat') || matName.includes('lash_mat'))) {
-              const lashTex = this._createProceduralEyelashTextures();
+              const hasOriginalMap = Boolean(m.map);
+              const lashTex = hasOriginalMap ? null : this._createProceduralEyelashTextures();
+              const diffuseMap = hasOriginalMap ? m.map : lashTex.map;
+              const alphaMap = m.alphaMap || (hasOriginalMap ? m.map : lashTex.alphaMap);
               const hasVertexColor = Boolean(node.geometry && node.geometry.attributes && node.geometry.attributes.color);
 
+              if (diffuseMap) diffuseMap.colorSpace = THREE.SRGBColorSpace;
+
               const lashMat = new THREE.MeshPhysicalMaterial({
-                color: new THREE.Color(0x120c09), // Tom ébano natural profundo
-                map: lashTex.map,
-                alphaMap: lashTex.alphaMap,
-                roughness: 0.26, // Fios hidratados com brilho delicado
+                color: hasOriginalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x120c09),
+                map: diffuseMap,
+                alphaMap: alphaMap,
+                roughness: 0.30,
                 metalness: 0.0,
-                specularIntensity: 0.75,
+                specularIntensity: 0.70,
                 specularColor: new THREE.Color(0x503525),
-                sheen: 0.40,
+                sheen: 0.35,
                 sheenColor: new THREE.Color(0x281910),
                 transparent: true,
-                alphaTest: 0.06,
+                alphaTest: 0.05,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
@@ -434,17 +454,18 @@ export class Renderer {
                 name: m.name,
               });
 
-              // Tapering e gradiente raiz-ponta suave do MetaHuman
-              lashMat.onBeforeCompile = (shader) => {
-                shader.fragmentShader = shader.fragmentShader.replace(
-                  '#include <alphamap_fragment>',
-                  `#include <alphamap_fragment>
-                  // Soft root-to-tip and edge tapering curve for natural delicate eyelashes
-                  float tipTaper = smoothstep(0.0, 0.92, 1.0 - abs(vUv.y - 0.5) * 1.5);
-                  diffuseColor.a *= clamp(tipTaper, 0.1, 1.0);
-                  `
-                );
-              };
+              if (!hasOriginalMap) {
+                // Tapering procedural caso não haja textura original
+                lashMat.onBeforeCompile = (shader) => {
+                  shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <alphamap_fragment>',
+                    `#include <alphamap_fragment>
+                    float tipTaper = smoothstep(0.0, 0.92, 1.0 - abs(vUv.y - 0.5) * 1.5);
+                    diffuseColor.a *= clamp(tipTaper, 0.1, 1.0);
+                    `
+                  );
+                };
+              }
 
               if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.55;
               return lashMat;
@@ -534,12 +555,26 @@ export class Renderer {
     const targetDim = isFullBody ? Math.max(size.x, size.y) * 1.5 : Math.max(fullSize.x, fullSize.y, fullSize.z);
     const scale  = 1.0 / (targetDim || 1);
 
+    // Save model's native rest transform (before centering and scaling for viewport)
+    model.userData.restTransform = {
+      position: model.position.clone(),
+      scale: model.scale.clone(),
+      quaternion: model.quaternion.clone(),
+    };
+
     // Create a unified Pivot container for harmonious 3DoF head rotation without detached hair
     const pivotGroup = new THREE.Group();
     pivotGroup.name = 'FaceToModel_Pivot';
 
     model.scale.setScalar(scale);
     model.position.sub(centre.multiplyScalar(scale));
+
+    model.userData.viewerTransform = {
+      position: model.position.clone(),
+      scale: model.scale.clone(),
+      quaternion: model.quaternion.clone(),
+    };
+
     pivotGroup.add(model);
 
     this._scene.add(pivotGroup);

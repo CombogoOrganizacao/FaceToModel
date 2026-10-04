@@ -21,7 +21,7 @@ import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
 import { MotionTimeline } from './motion-timeline.js';
 import { GlassesFilter } from './glasses-filter.js';
-import { exportModelToGLB, buildAnimationClip } from './glb-exporter.js';
+import { exportModelToGLB, buildAnimationClip, exportCurvesCSV, exportCurvesJSON } from './glb-exporter.js';
 import { ExpressionControls, EXPRESSION_CATEGORIES } from './expression-controls.js';
 import { ensureModelBlendshapes } from './blendshape-synthesizer.js';
 import { buildModelMap } from './blendshape-mapper.js';
@@ -1003,68 +1003,138 @@ function setupTimeline() {
     showToast('Timeline limpa. Pronto para novo take.', 'info');
   });
 
-  // Botão Exportar Animação no Modelo 3D (.GLB) para Unity, Unreal, Blender, Godot
+  // ── Handlers de Exportação para Game Engines (Unreal, Unity, Godot) ──
+  const exportGLBAction = async (triggerBtn = null) => {
+    if (!motionTimeline || motionTimeline.frames.length < 2) {
+      showToast('Grave movimentos na timeline antes de exportar o modelo 3D.', 'info');
+      return;
+    }
+    if (!renderer || !renderer.getModel()) {
+      showToast('Nenhum modelo 3D carregado para exportação.', 'error');
+      return;
+    }
+
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.style.opacity = '0.5';
+      triggerBtn.style.pointerEvents = 'none';
+    }
+    showToast('Empacotando animação 3D no modelo (.glb)...', 'info');
+
+    try {
+      const model = renderer.getInnerModel();
+      const modelMap = renderer.getModelMap();
+      const headBone = renderer.getHeadBone();
+      const neckBone = renderer.getNeckBone();
+      const headAttachments = renderer.getHeadAttachments();
+
+      const animationClip = buildAnimationClip({
+        frames: motionTimeline.frames,
+        trimIn: motionTimeline.trimIn,
+        trimOut: motionTimeline.trimOut,
+        model: model,
+        modelMap: modelMap,
+        headBone: headBone,
+        neckBone: neckBone,
+        headAttachments: headAttachments,
+        clipName: 'FaceToModel_MotionTake'
+      });
+
+      if (!animationClip) {
+        showToast('Nenhuma faixa de movimento detectada para exportar.', 'error');
+        return;
+      }
+
+      const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'modelo_3d';
+      const filename = `${baseName}_animado.glb`;
+
+      await exportModelToGLB({
+        model: model,
+        animationClip: animationClip,
+        filename: filename
+      });
+
+      showToast(`Animação 3D salva no modelo: ${filename}`, 'success');
+    } catch (err) {
+      console.error('[main] Erro na exportação do modelo GLB:', err);
+      showToast('Erro ao exportar modelo 3D: ' + err.message, 'error');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.style.opacity = '';
+        triggerBtn.style.pointerEvents = '';
+      }
+    }
+  };
+
+  const exportCSVAction = () => {
+    if (!motionTimeline || motionTimeline.frames.length < 2) {
+      showToast('Grave movimentos na timeline antes de exportar as curvas.', 'info');
+      return;
+    }
+    showToast('Exportando curvas para Unreal Live Link Face (CSV)...', 'info');
+    try {
+      const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'facetomodel';
+      const filename = `${baseName}_livelink.csv`;
+
+      exportCurvesCSV({
+        frames: motionTimeline.frames,
+        trimIn: motionTimeline.trimIn,
+        trimOut: motionTimeline.trimOut,
+        filename: filename,
+        fps: 60,
+      });
+
+      showToast(`Curvas Live Link exportadas: ${filename}`, 'success');
+    } catch (err) {
+      console.error('[main] Erro na exportação CSV Live Link:', err);
+      showToast('Erro ao exportar CSV: ' + err.message, 'error');
+    }
+  };
+
+  const exportJSONAction = () => {
+    if (!motionTimeline || motionTimeline.frames.length < 2) {
+      showToast('Grave movimentos na timeline antes de exportar as curvas.', 'info');
+      return;
+    }
+    showToast('Exportando curvas de animação em JSON...', 'info');
+    try {
+      const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'facetomodel';
+      const filename = `${baseName}_curves.json`;
+
+      exportCurvesJSON({
+        frames: motionTimeline.frames,
+        trimIn: motionTimeline.trimIn,
+        trimOut: motionTimeline.trimOut,
+        filename: filename,
+        fps: 60,
+      });
+
+      showToast(`Curvas JSON exportadas: ${filename}`, 'success');
+    } catch (err) {
+      console.error('[main] Erro na exportação JSON:', err);
+      showToast('Erro ao exportar JSON: ' + err.message, 'error');
+    }
+  };
+
+  // Botões de Exportação na Timeline e no Drawer Lateral
   const btnExportGLB = $('btn-tl-export-glb');
-  if (btnExportGLB) {
-    btnExportGLB.addEventListener('click', async () => {
-      if (!motionTimeline || motionTimeline.frames.length < 2) {
-        showToast('Grave movimentos na timeline antes de exportar o modelo 3D.', 'info');
-        return;
-      }
-      if (!renderer || !renderer.getModel()) {
-        showToast('Nenhum modelo 3D carregado para exportação.', 'error');
-        return;
-      }
+  if (btnExportGLB) btnExportGLB.addEventListener('click', () => exportGLBAction(btnExportGLB));
 
-      btnExportGLB.disabled = true;
-      btnExportGLB.style.opacity = '0.5';
-      btnExportGLB.style.pointerEvents = 'none';
-      showToast('Empacotando animação 3D no modelo (.glb)...', 'info');
+  const btnSideExportGLB = document.getElementById('btn-side-export-glb');
+  if (btnSideExportGLB) btnSideExportGLB.addEventListener('click', () => exportGLBAction(btnSideExportGLB));
 
-      try {
-        const model = renderer.getInnerModel();
-        const modelMap = renderer.getModelMap();
-        const headBone = renderer.getHeadBone();
-        const neckBone = renderer.getNeckBone();
-        const headAttachments = renderer.getHeadAttachments();
+  const btnExportCSV = $('btn-tl-export-csv');
+  if (btnExportCSV) btnExportCSV.addEventListener('click', exportCSVAction);
 
-        const animationClip = buildAnimationClip({
-          frames: motionTimeline.frames,
-          trimIn: motionTimeline.trimIn,
-          trimOut: motionTimeline.trimOut,
-          model: model,
-          modelMap: modelMap,
-          headBone: headBone,
-          neckBone: neckBone,
-          headAttachments: headAttachments,
-          clipName: 'FaceToModel_MotionTake'
-        });
+  const btnSideExportCSV = document.getElementById('btn-side-export-csv');
+  if (btnSideExportCSV) btnSideExportCSV.addEventListener('click', exportCSVAction);
 
-        if (!animationClip) {
-          showToast('Nenhuma faixa de movimento detectada para exportar.', 'error');
-          return;
-        }
+  const btnExportJSON = $('btn-tl-export-json');
+  if (btnExportJSON) btnExportJSON.addEventListener('click', exportJSONAction);
 
-        const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'modelo_3d';
-        const filename = `${baseName}_animado.glb`;
-
-        await exportModelToGLB({
-          model: model,
-          animationClip: animationClip,
-          filename: filename
-        });
-
-        showToast(`Animação 3D salva no modelo: ${filename}!`, 'success');
-      } catch (err) {
-        console.error('[main] Erro na exportação do modelo GLB:', err);
-        showToast('Erro ao exportar modelo 3D: ' + err.message, 'error');
-      } finally {
-        btnExportGLB.disabled = false;
-        btnExportGLB.style.opacity = '';
-        btnExportGLB.style.pointerEvents = '';
-      }
-    });
-  }
+  const btnSideExportJSON = document.getElementById('btn-side-export-json');
+  if (btnSideExportJSON) btnSideExportJSON.addEventListener('click', exportJSONAction);
 
   // Botão Exportar MP4 do Trecho Recortado em 1080p 60 FPS
   btnExport.addEventListener('click', async () => {

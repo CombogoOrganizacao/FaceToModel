@@ -162,11 +162,27 @@
           </svg>
         </button>
 
-        <button class="tl-action-btn secondary" id="btn-tl-export-glb" title="Exportar Animação no Modelo 3D (.glb) para Unity, Unreal, Blender, Godot" aria-label="Exportar Modelo 3D">
+        <button class="tl-action-btn secondary" id="btn-tl-export-glb" title="Exportar Modelo 3D (.glb) com Animação (Godot, Unity, Blender)" aria-label="Exportar GLB">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
             <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <button class="tl-action-btn secondary" id="btn-tl-export-csv" title="Exportar Curvas em CSV (Unreal Engine Live Link Face)" aria-label="Exportar Unreal Live Link CSV">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+            <line x1="8" y1="17" x2="16" y2="17" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <button class="tl-action-btn secondary" id="btn-tl-export-json" title="Exportar Curvas em JSON (Multi-Engine / Godot / Unity)" aria-label="Exportar Curvas JSON">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polyline points="16 18 22 12 16 6" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="8 6 2 12 8 18" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
 
@@ -224,7 +240,7 @@
               <option value="/models/facecap.glb?v=20261004_v4" selected>Padrão (FaceCap)</option>
               <option value="/models/anime.glb?v=20261004_v4">Anime Feminina (VRM Avatar)</option>
               <option value="/models/metahuman.glb?v=20261004_v4">Realista (MetaHuman Bo)</option>
-              <option value="/models/asha.glb?v=20261004_v4">Realista (MetaHuman Asha)</option>
+              <option value="/models/asha.glb?v=20261004_v4">Realista (MetaHuman Ada)</option>
               <option value="/models/stylized.glb?v=20261004_v4">Estilizado (Hero)</option>
               <option value="/models/raccoon.glb?v=20261004_v4">Furry (Raccoon)</option>
             </select>
@@ -267,6 +283,99 @@
               <input type="checkbox" id="chk-show-textures" checked>
               <span class="switch-track"><span class="switch-thumb"></span></span>
             </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Accordion: Exportação para Game Engines (Unreal, Unity, Godot) ── -->
+      <div class="accordion-item" id="acc-export">
+        <button class="accordion-header" type="button">
+          <div class="accordion-title">
+            <svg class="svg-icon sm" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="7 10 12 15 17 10" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Exportação para Game Engines</span>
+          </div>
+          <svg class="accordion-chevron" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+        </button>
+        <div class="accordion-content">
+          <!-- Unreal Engine 5 (Live Link Face CSV) -->
+          <div class="card-row" style="margin-bottom: 8px; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; border: 0.5px solid var(--border-divider);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="row-icon-box blue" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                    <line x1="8" y1="17" x2="16" y2="17" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style="font-size: 12px; font-weight: 600; color: #fff;">Unreal Engine 5 (CSV)</div>
+                  <div style="font-size: 10px; color: var(--label-secondary);">Live Link Face (MetaHuman Bo e Ada)</div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--label-secondary); margin: 0; line-height: 1.35;">
+              Exporta 61 curvas faciais e rotação 3DoF em graus a 60 FPS. Compatível com Live Link Face Importer no Unreal Engine 5.
+            </p>
+            <button class="btn-apple" id="btn-side-export-csv" style="font-size: 11px; padding: 6px 10px; justify-content: center; background: rgba(99, 102, 241, 0.25); border: 0.5px solid rgba(99, 102, 241, 0.5); color: #fff;">
+              Exportar CSV Live Link
+            </button>
+          </div>
+
+          <!-- Godot 4 & Unity (GLB 3D) -->
+          <div class="card-row" style="margin-bottom: 8px; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; border: 0.5px solid var(--border-divider);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="row-icon-box green" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style="font-size: 12px; font-weight: 600; color: #fff;">Godot 4 / Unity / Blender (GLB)</div>
+                  <div style="font-size: 10px; color: var(--label-secondary);">Modelo 3D com Trilhas Embutidas</div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--label-secondary); margin: 0; line-height: 1.35;">
+              Modelo limpo em escala e rotação originais (sem compensação de visualização), com trilhas de Morph Target e ossos de cabeça.
+            </p>
+            <button class="btn-apple" id="btn-side-export-glb" style="font-size: 11px; padding: 6px 10px; justify-content: center; background: rgba(16, 185, 129, 0.25); border: 0.5px solid rgba(16, 185, 129, 0.5); color: #fff;">
+              Exportar Modelo GLB Animado
+            </button>
+          </div>
+
+          <!-- Multi-Engine Universal (JSON) -->
+          <div class="card-row" style="margin-bottom: 4px; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px; background: rgba(255, 255, 255, 0.04); border-radius: 8px; border: 0.5px solid var(--border-divider);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div class="row-icon-box purple" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <polyline points="16 18 22 12 16 6" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    <polyline points="8 6 2 12 8 18" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style="font-size: 12px; font-weight: 600; color: #fff;">Universal (JSON)</div>
+                  <div style="font-size: 10px; color: var(--label-secondary);">Curvas e Timestamps a 60 FPS</div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--label-secondary); margin: 0; line-height: 1.35;">
+              Curvas normalizadas em JSON puro com timestamps exatos para GDScript, C#, Python ou engines customizadas.
+            </p>
+            <button class="btn-apple" id="btn-side-export-json" style="font-size: 11px; padding: 6px 10px; justify-content: center; background: rgba(255, 255, 255, 0.08); border: 0.5px solid rgba(255, 255, 255, 0.15); color: #fff;">
+              Exportar Curvas JSON
+            </button>
           </div>
         </div>
       </div>
@@ -699,6 +808,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261004_v5"></script>
+<script type="module" src="/js/main.js?v=20261004_v6"></script>
 </body>
 </html>

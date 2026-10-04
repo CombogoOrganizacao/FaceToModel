@@ -272,19 +272,313 @@ export function buildAnimationClip({
 }
 
 /**
+ * Exports facial animation curves to Unreal Engine Live Link Face CSV format.
+ * Compatible with Unreal Engine 5.x Live Link Face Importer / Curve Tables for MetaHumans.
+ *
+ * @param {Object} options
+ * @param {Array<{ time: number, blendShapes: Record<string, number>, rotation: { pitch: number, yaw: number, roll: number }|null }>} options.frames
+ * @param {number} [options.trimIn]
+ * @param {number} [options.trimOut]
+ * @param {string} [options.filename]
+ * @param {number} [options.fps]
+ * @returns {Blob}
+ */
+export function exportCurvesCSV({
+  frames,
+  trimIn = 0,
+  trimOut = 0,
+  filename = 'facetomodel_livelink.csv',
+  fps = 60,
+}) {
+  if (!frames || frames.length === 0) {
+    throw new Error('Nenhum quadro de animação para exportar.');
+  }
+
+  const validFrames = frames.filter((f) => f.time >= trimIn && (trimOut <= trimIn || f.time <= trimOut));
+  if (validFrames.length === 0) {
+    throw new Error('Nenhum quadro válido no intervalo de corte selecionado.');
+  }
+
+  // Canonical 52 ARKit BlendShape keys in standard Unreal Engine Live Link order
+  const ARKIT_LIVE_LINK_KEYS = [
+    'EyeBlinkLeft', 'EyeLookDownLeft', 'EyeLookInLeft', 'EyeLookOutLeft', 'EyeLookUpLeft',
+    'EyeSquintLeft', 'EyeWideLeft', 'EyeBlinkRight', 'EyeLookDownRight', 'EyeLookInRight',
+    'EyeLookOutRight', 'EyeLookUpRight', 'EyeSquintRight', 'EyeWideRight', 'JawForward',
+    'JawLeft', 'JawRight', 'JawOpen', 'MouthClose', 'MouthFunnel', 'MouthPucker',
+    'MouthLeft', 'MouthRight', 'MouthSmileLeft', 'MouthSmileRight', 'MouthFrownLeft',
+    'MouthFrownRight', 'MouthDimpleLeft', 'MouthDimpleRight', 'MouthStretchLeft',
+    'MouthStretchRight', 'MouthRollLower', 'MouthRollUpper', 'MouthShrugLower',
+    'MouthShrugUpper', 'MouthPressLeft', 'MouthPressRight', 'MouthLowerDownLeft',
+    'MouthLowerDownRight', 'MouthUpperUpLeft', 'MouthUpperUpRight', 'BrowDownLeft',
+    'BrowDownRight', 'BrowInnerUp', 'BrowOuterUpLeft', 'BrowOuterUpRight', 'CheekPuff',
+    'CheekSquintLeft', 'CheekSquintRight', 'NoseSneerLeft', 'NoseSneerRight', 'TongueOut'
+  ];
+
+  // Rotation columns (in degrees)
+  const ROTATION_KEYS = [
+    'HeadYaw', 'HeadPitch', 'HeadRoll',
+    'LeftEyeYaw', 'LeftEyePitch', 'LeftEyeRoll',
+    'RightEyeYaw', 'RightEyePitch', 'RightEyeRoll'
+  ];
+
+  const BLENDSHAPE_COUNT = ARKIT_LIVE_LINK_KEYS.length + ROTATION_KEYS.length; // 61
+
+  // Header
+  const header = ['Timecode', 'BlendShapeCount', ...ARKIT_LIVE_LINK_KEYS, ...ROTATION_KEYS].join(',');
+  const lines = [header];
+
+  const startTime = validFrames[0].time;
+
+  for (let i = 0; i < validFrames.length; i++) {
+    const frame = validFrames[i];
+    const relTime = Math.max(0, frame.time - startTime);
+
+    // Calculate timecode HH:MM:SS:FF
+    const totalFrames = Math.round(relTime * fps);
+    const ff = totalFrames % fps;
+    const totalSeconds = Math.floor(totalFrames / fps);
+    const ss = totalSeconds % 60;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const mm = totalMinutes % 60;
+    const hh = Math.floor(totalMinutes / 60);
+
+    const pad = (n, w = 2) => String(n).padStart(w, '0');
+    const timecode = `${pad(hh)}:${pad(mm)}:${pad(ss)}:${pad(ff)}`;
+
+    // Build row values
+    const rowValues = [timecode, BLENDSHAPE_COUNT];
+
+    // Build quick lookup dictionary for this frame
+    const shapes = frame.blendShapes || {};
+    const lowerShapes = {};
+    for (const [k, v] of Object.entries(shapes)) {
+      lowerShapes[k.toLowerCase()] = v;
+    }
+
+    // 52 Blendshapes
+    for (const key of ARKIT_LIVE_LINK_KEYS) {
+      let val = shapes[key];
+      if (val === undefined) {
+        val = lowerShapes[key.toLowerCase()] ?? 0.0;
+      }
+      val = Math.max(0, Math.min(1, Number(val) || 0));
+      rowValues.push(val.toFixed(6));
+    }
+
+    // Rotations in degrees
+    const rot = frame.rotation || { pitch: 0, yaw: 0, roll: 0 };
+    const toDeg = 180 / Math.PI;
+    const headYawDeg = (rot.yaw || 0) * toDeg;
+    const headPitchDeg = (rot.pitch || 0) * toDeg;
+    const headRollDeg = (rot.roll || 0) * toDeg;
+
+    rowValues.push(headYawDeg.toFixed(4));
+    rowValues.push(headPitchDeg.toFixed(4));
+    rowValues.push(headRollDeg.toFixed(4));
+
+    // Eye rotations (LeftEyeYaw, LeftEyePitch, LeftEyeRoll, RightEyeYaw, RightEyePitch, RightEyeRoll)
+    rowValues.push('0.0000', '0.0000', '0.0000', '0.0000', '0.0000', '0.0000');
+
+    lines.push(rowValues.join(','));
+  }
+
+  const csvContent = lines.join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+
+  return blob;
+}
+
+/**
+ * Exports facial animation curves to a universal, lightweight JSON format.
+ * Compatible with Godot 4.x, Unity (C# json import), and custom game pipelines.
+ *
+ * @param {Object} options
+ * @param {Array<{ time: number, blendShapes: Record<string, number>, rotation: { pitch: number, yaw: number, roll: number }|null }>} options.frames
+ * @param {number} [options.trimIn]
+ * @param {number} [options.trimOut]
+ * @param {string} [options.filename]
+ * @param {number} [options.fps]
+ * @returns {Blob}
+ */
+export function exportCurvesJSON({
+  frames,
+  trimIn = 0,
+  trimOut = 0,
+  filename = 'facetomodel_curves.json',
+  fps = 60,
+}) {
+  if (!frames || frames.length === 0) {
+    throw new Error('Nenhum quadro de animação para exportar.');
+  }
+
+  const validFrames = frames.filter((f) => f.time >= trimIn && (trimOut <= trimIn || f.time <= trimOut));
+  if (validFrames.length === 0) {
+    throw new Error('Nenhum quadro válido no intervalo de corte selecionado.');
+  }
+
+  const startTime = validFrames[0].time;
+  const duration = Math.max(0.01, validFrames[validFrames.length - 1].time - startTime);
+
+  // Discover all blendshape names present across frames
+  const shapeNameSet = new Set();
+  validFrames.forEach((f) => {
+    if (f.blendShapes) {
+      Object.keys(f.blendShapes).forEach((k) => shapeNameSet.add(k));
+    }
+  });
+
+  const curves = {};
+  shapeNameSet.forEach((name) => {
+    curves[name] = [];
+  });
+
+  const rotation = {
+    pitch: [],
+    yaw: [],
+    roll: [],
+  };
+  const timestamps = [];
+
+  for (let i = 0; i < validFrames.length; i++) {
+    const f = validFrames[i];
+    const t = Math.max(0, Number((f.time - startTime).toFixed(4)));
+    timestamps.push(t);
+
+    const shapes = f.blendShapes || {};
+    shapeNameSet.forEach((name) => {
+      const val = shapes[name] !== undefined ? Number(shapes[name].toFixed(4)) : 0.0;
+      curves[name].push(val);
+    });
+
+    const rot = f.rotation || { pitch: 0, yaw: 0, roll: 0 };
+    rotation.pitch.push(Number((rot.pitch || 0).toFixed(4)));
+    rotation.yaw.push(Number((rot.yaw || 0).toFixed(4)));
+    rotation.roll.push(Number((rot.roll || 0).toFixed(4)));
+  }
+
+  const data = {
+    version: '1.0',
+    generator: 'FaceToModel',
+    fps,
+    duration: Number(duration.toFixed(3)),
+    frameCount: validFrames.length,
+    timestamps,
+    curves,
+    rotation,
+  };
+
+  const jsonContent = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonContent], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+
+  return blob;
+}
+
+/**
  * Exports the 3D model with embedded AnimationClip to a binary .GLB file and triggers download.
+ * Performs clean unwrap of viewer framing transforms and restores native rest pose for engine compatibility.
+ *
  * @param {Object} options
  * @param {THREE.Object3D} options.model - The 3D model scene
  * @param {THREE.AnimationClip} options.animationClip - The generated animation clip
  * @param {string} [options.filename] - Output file name
+ * @param {boolean} [options.preserveViewerTransforms] - Whether to keep viewport scale/offsets (default false)
  * @returns {Promise<Blob>}
  */
-export function exportModelToGLB({ model, animationClip, filename = 'facetomodel_animation.glb' }) {
+export function exportModelToGLB({
+  model,
+  animationClip,
+  filename = 'facetomodel_animation.glb',
+  preserveViewerTransforms = false,
+}) {
   return new Promise((resolve, reject) => {
     const exporter = new GLTFExporter();
-
-    // Export the inner model (or root model)
     const exportTarget = model;
+
+    // 1. Non-destructively preserve and prepare rest transforms and original materials
+    const savedTransforms = new Map();
+    const savedMaterials = new Map();
+    const savedMorphs = new Map();
+
+    exportTarget.traverse((node) => {
+      if (node.isMesh) {
+        if (!node.name || node.name.trim() === '') {
+          node.name = `Mesh_${node.id}`;
+        }
+        // Swap back to original untouched PBR material for clean GLB export
+        if (node.userData && node.userData.originalMaterial) {
+          savedMaterials.set(node, node.material);
+          node.material = node.userData.originalMaterial;
+        }
+        // Reset morph target influences to rest (0) for base mesh geometry
+        if (node.morphTargetInfluences && Array.isArray(node.morphTargetInfluences)) {
+          savedMorphs.set(node, node.morphTargetInfluences.slice());
+          node.morphTargetInfluences.fill(0);
+        }
+      } else if (node.isBone) {
+        if (node.userData && node.userData.restQuaternion) {
+          savedTransforms.set(node, {
+            quaternion: node.quaternion.clone(),
+            position: node.position.clone(),
+          });
+          node.quaternion.copy(node.userData.restQuaternion);
+          if (node.userData.restPosition) {
+            node.position.copy(node.userData.restPosition);
+          }
+        }
+      }
+    });
+
+    // Reset root model transforms to original rest (scale 1.0, position 0,0,0) if viewport framing was applied
+    let savedRootTransform = null;
+    if (!preserveViewerTransforms && exportTarget.userData && exportTarget.userData.restTransform) {
+      savedRootTransform = {
+        position: exportTarget.position.clone(),
+        scale: exportTarget.scale.clone(),
+        quaternion: exportTarget.quaternion.clone(),
+      };
+      exportTarget.position.copy(exportTarget.userData.restTransform.position);
+      exportTarget.scale.copy(exportTarget.userData.restTransform.scale);
+      exportTarget.quaternion.copy(exportTarget.userData.restTransform.quaternion);
+    }
+
+    exportTarget.updateMatrixWorld(true);
+
+    const restoreState = () => {
+      if (savedRootTransform) {
+        exportTarget.position.copy(savedRootTransform.position);
+        exportTarget.scale.copy(savedRootTransform.scale);
+        exportTarget.quaternion.copy(savedRootTransform.quaternion);
+      }
+      savedMaterials.forEach((mat, node) => {
+        node.material = mat;
+      });
+      savedMorphs.forEach((influences, node) => {
+        for (let i = 0; i < influences.length; i++) {
+          node.morphTargetInfluences[i] = influences[i];
+        }
+      });
+      savedTransforms.forEach((tf, bone) => {
+        bone.quaternion.copy(tf.quaternion);
+        bone.position.copy(tf.position);
+      });
+      exportTarget.updateMatrixWorld(true);
+    };
 
     const options = {
       binary: true,
@@ -293,11 +587,13 @@ export function exportModelToGLB({ model, animationClip, filename = 'facetomodel
       truncateDrawRange: false,
     };
 
-    console.log(`[glb-exporter] Exportando GLB com ${animationClip?.tracks.length || 0} trilhas de animação...`);
+    console.log(`[glb-exporter] Exportando GLB limpo com ${animationClip?.tracks.length || 0} trilhas de animação...`);
 
     exporter.parse(
       exportTarget,
       (result) => {
+        restoreState();
+
         if (result instanceof ArrayBuffer) {
           const blob = new Blob([result], { type: 'model/gltf-binary' });
           const url = URL.createObjectURL(blob);
@@ -326,6 +622,7 @@ export function exportModelToGLB({ model, animationClip, filename = 'facetomodel
         }
       },
       (error) => {
+        restoreState();
         console.error('[glb-exporter] Erro ao exportar GLB:', error);
         reject(error);
       },
@@ -333,3 +630,4 @@ export function exportModelToGLB({ model, animationClip, filename = 'facetomodel
     );
   });
 }
+
