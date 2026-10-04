@@ -571,6 +571,27 @@ function setupShading() {
       renderer.setSmoothLevel(Number(e.target.value) / 100);
     }
   });
+
+  const sliderExposure = $('slider-camera-exposure');
+  const labelExposure = $('label-camera-exposure');
+  if (sliderExposure && labelExposure) {
+    sliderExposure.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value).toFixed(2);
+      labelExposure.textContent = val;
+      if (renderer) {
+        renderer.setExposure(parseFloat(val));
+      }
+    });
+  }
+
+  const chkGroundShadow = $('chk-ground-shadow');
+  if (chkGroundShadow) {
+    chkGroundShadow.addEventListener('change', (e) => {
+      if (renderer) {
+        renderer.setGroundShadow(e.target.checked);
+      }
+    });
+  }
 }
 
 /* ─── Custom Background & Blur Filter ─────────────────────────────────────── */

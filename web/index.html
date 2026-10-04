@@ -476,6 +476,33 @@
               </div>
               <input type="range" id="slider-smooth-level" min="0" max="100" value="85" step="1" class="apple-slider" />
             </div>
+
+            <div class="slider-control-group" id="group-exposure">
+              <div class="slider-header">
+                <span class="slider-title">Exposição da Câmera (ACES)</span>
+                <span class="slider-value" id="label-camera-exposure">1.15</span>
+              </div>
+              <input type="range" id="slider-camera-exposure" min="0.2" max="2.5" value="1.15" step="0.05" class="apple-slider" />
+            </div>
+
+            <div class="card-row" style="margin-top: 6px; padding: 6px 0;">
+              <div class="row-leading">
+                <div class="row-icon-box blue" style="width: 28px; height: 28px;">
+                  <svg class="svg-icon sm" viewBox="0 0 24 24">
+                    <ellipse cx="12" cy="18" rx="8" ry="3" stroke="currentColor" stroke-width="1.75" fill="none"/>
+                    <path d="M12 3v11" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="row-text">
+                  <span class="row-title" style="font-size: 11px;">Sombra de Contato</span>
+                  <span class="row-sub" style="font-size: 9px;">Oclusão realista no piso</span>
+                </div>
+              </div>
+              <label class="ios-switch">
+                <input type="checkbox" id="chk-ground-shadow" checked>
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </label>
+            </div>
           </div>
 
           <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
@@ -939,6 +966,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261004_v13"></script>
+<script type="module" src="/js/main.js?v=20261004_v14"></script>
 </body>
 </html>

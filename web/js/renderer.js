@@ -38,6 +38,25 @@ const CAMERA_FOV = 32;
 /** Camera start position in model space */
 const CAMERA_Z = 2.4;
 
+/* ─── PBR Texture Calibration Helper ──────────────────────────────────────── */
+
+/**
+ * Calibrates texture color space, filtering and mipmaps according to PBR standards.
+ * Color/Emissive maps MUST be sRGB; Data maps (normal, roughness, metalness, ao, alpha) MUST be Linear.
+ * @param {THREE.Texture|null} tex
+ * @param {boolean} isColorMap
+ * @returns {THREE.Texture|null}
+ */
+function calibrateTexture(tex, isColorMap = false) {
+  if (!tex || !tex.isTexture) return tex;
+  tex.colorSpace = isColorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /* ─── Renderer ──────────────────────────────────────────────────── */
 
 export class Renderer {
@@ -151,6 +170,10 @@ export class Renderer {
     this._currentBlendshapes = {};
     this._targetRotation = { x: 0, y: 0, z: 0 };
     this._currentRotation = { x: 0, y: 0, z: 0 };
+
+    /* ── Ground Contact Shadow Plane ── */
+    this._groundPlane = null;
+    this._groundShadowEnabled = true;
 
     /* ── ResizeObserver ── */
     this._resizeObserver = new ResizeObserver(() => this._onResize());
@@ -388,6 +411,8 @@ export class Renderer {
       }
     }
 
+    const isGLTF = !lowerName.endsWith('.fbx') && !lowerName.endsWith('.obj');
+
     // Detect if model is MetaHuman Bo or Epic Games MetaHuman avatar
     let isMetaHuman = false;
     model.traverse((node) => {
@@ -406,7 +431,7 @@ export class Renderer {
       }
     });
 
-    // Ensure all materials are double-sided, properly sorted for alpha blending, and skin/eyes/hair rendered with Unreal Engine realistic PBR
+    // Ensure all materials are double-sided, properly sorted for alpha blending, and calibrated
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
@@ -423,16 +448,95 @@ export class Renderer {
             const matName = (m.name || '').toLowerCase();
             const nodeName = (node.name || '').toLowerCase();
 
-            // 0. Converter materiais legados Phong (criados pelo MTLLoader do .obj) para PBR MeshStandardMaterial
-            // com busca inteligente de mapas de Roughness, Metallic, Normal e Opacity no assetMap
-            if (m.isMeshPhongMaterial) {
+            // =========================================================================
+            // CASO 1: Modelos PBR Modernos GLTF / GLB (Blender, Substance, Maya, Sketchfab)
+            // Rigorosamente preserva as cores, texturas e parâmetros autorados pelo artista!
+            // =========================================================================
+            if (isGLTF && !isMetaHuman) {
+              // 1. Calibrar espaços de cor de todas as texturas presentes no material
+              calibrateTexture(m.map, true);
+              calibrateTexture(m.emissiveMap, true);
+              calibrateTexture(m.normalMap, false);
+              calibrateTexture(m.roughnessMap, false);
+              calibrateTexture(m.metalnessMap, false);
+              calibrateTexture(m.aoMap, false);
+              calibrateTexture(m.alphaMap, false);
+              calibrateTexture(m.clearcoatMap, false);
+              calibrateTexture(m.clearcoatRoughnessMap, false);
+              calibrateTexture(m.transmissionMap, false);
+              calibrateTexture(m.sheenColorMap, true);
+
+              // 2. Camadas oclusoras de olhos / esclera oculta
+              const isEyeShell = matName.includes('eyeshell') || matName.includes('eyeedge') ||
+                                 matName.includes('saliva') || matName.includes('cartilage') ||
+                                 matName.includes('m_hide') || matName.includes('lacrimal');
+              if (isEyeShell) {
+                m.transparent = true;
+                m.opacity = 0.0;
+                m.depthWrite = false;
+                m.visible = false;
+                return m;
+              }
+
+              // 3. Offset de profundidade para sobrancelhas e cílios (evita z-fighting com o crânio)
+              const isEyelashOrBrow = matName.includes('lash') || matName.includes('eyebrow') ||
+                                      matName.includes('brow') || nodeName.includes('lash') ||
+                                      nodeName.includes('eyebrow') || nodeName.includes('brow');
+              if (isEyelashOrBrow) {
+                m.polygonOffset = true;
+                m.polygonOffsetFactor = -1.5;
+                m.polygonOffsetUnits = -3;
+              }
+
+              // 4. Cartões de pelos (fur), cabelo, roupas e transparência por recorte
+              const isHairOrFur = matName.includes('hair') || matName.includes('fur') ||
+                                  matName.includes('pelo') || matName.includes('card') ||
+                                  nodeName.includes('hair') || nodeName.includes('fur');
+
+              const hasAlpha = Boolean(
+                m.transparent ||
+                (m.alphaTest > 0) ||
+                m.alphaMap ||
+                (m.opacity !== undefined && m.opacity < 0.999)
+              );
+
+              if (isHairOrFur || isEyelashOrBrow || hasAlpha) {
+                // Cartões de pelos/cabelo: visualização frente e verso obrigatória
+                m.side = THREE.DoubleSide;
+                // Mantém depthWrite ativo para que os fios ocluam o modelo corretamente sem ver através da cabeça
+                m.depthWrite = true;
+                m.depthTest = true;
+                // Alpha to Coverage com MSAA produz recorte nítido e suave sem artefatos de sorting
+                m.alphaToCoverage = true;
+                // No Sketchfab/Blender, alphaTest baixo (0.05) preserva as pontas finas dos fios
+                if (m.alphaTest <= 0) {
+                  m.alphaTest = 0.05;
+                }
+              } else {
+                m.side = THREE.DoubleSide;
+                m.depthWrite = true;
+                m.depthTest = true;
+                m.transparent = false;
+              }
+
+              // ATENÇÃO: NÃO sobrescrever m.color, m.roughness, m.metalness ou m.emissive!
+              // O artista no Blender/Substance/Maya definiu esses valores deliberadamente.
+              return m;
+            }
+
+            // =========================================================================
+            // CASO 2: Materiais Legados Phong (.obj via MTLLoader ou .fbx legado)
+            // Conversão física para PBR MeshStandardMaterial com preservação de Kd e shininess
+            // =========================================================================
+            if (m.isMeshPhongMaterial || !isGLTF) {
               const baseMap = m.map;
-              if (baseMap) baseMap.colorSpace = THREE.SRGBColorSpace;
+              if (baseMap) calibrateTexture(baseMap, true);
 
               let normalMap = m.normalMap || m.bumpMap;
               let alphaMap = m.alphaMap;
               let roughnessMap = null;
               let metallicMap = null;
+              let aoMap = null;
 
               if (assetMap && Object.keys(assetMap).length > 0) {
                 const texLoader = new THREE.TextureLoader();
@@ -450,43 +554,91 @@ export class Renderer {
                   return matchKey ? texLoader.load(assetMap[matchKey]) : null;
                 };
 
-                roughnessMap = findMap(/(roughness|rough|ns)/i);
-                metallicMap = findMap(/(metallic|metal|refl)/i);
-                if (!normalMap) normalMap = findMap(/(normal|norm|nrm|bump)/i);
-                if (!alphaMap) alphaMap = findMap(/(opacity|alpha|mask)/i);
+                // Suporte a texturas empacotadas ORM / ARM (Occlusion, Roughness, Metallic)
+                const ormKey = Object.keys(assetMap).find((k) => {
+                  const lk = k.toLowerCase();
+                  return /(orm|arm|rough.*metal|metal.*rough)/i.test(lk) &&
+                         ((cleanMatName.length >= 3 && lk.includes(cleanMatName)) ||
+                          (cleanNodeName.length >= 3 && lk.includes(cleanNodeName)));
+                }) || Object.keys(assetMap).find((k) => /(orm|arm|rough.*metal|metal.*rough)/i.test(k.toLowerCase()));
+
+                if (ormKey) {
+                  const ormTex = texLoader.load(assetMap[ormKey]);
+                  calibrateTexture(ormTex, false);
+                  roughnessMap = ormTex;
+                  metallicMap = ormTex;
+                  aoMap = ormTex;
+                } else {
+                  roughnessMap = findMap(/(roughness|rough|ns)/i);
+                  if (roughnessMap) calibrateTexture(roughnessMap, false);
+                  metallicMap = findMap(/(metallic|metal|refl)/i);
+                  if (metallicMap) calibrateTexture(metallicMap, false);
+                }
+
+                if (!normalMap) {
+                  normalMap = findMap(/(normal|norm|nrm|bump)/i);
+                  if (normalMap) calibrateTexture(normalMap, false);
+                }
+                if (!alphaMap) {
+                  alphaMap = findMap(/(opacity|alpha|mask)/i);
+                  if (alphaMap) calibrateTexture(alphaMap, false);
+                }
               }
+
+              // Conversão física de shininess do Blinn-Phong para Roughness GGX
+              const shininess = m.shininess !== undefined ? m.shininess : 30;
+              const convertedRoughness = Math.min(1.0, Math.max(0.08, Math.sqrt(2.0 / (shininess + 2.0))));
+
+              // Metalness estimado a partir da luminância especular
+              let convertedMetalness = 0.04;
+              if (m.specular) {
+                const specLum = m.specular.r * 0.2126 + m.specular.g * 0.7152 + m.specular.b * 0.0722;
+                if (specLum > 0.65) convertedMetalness = 0.85;
+              }
+
+              const hasAlpha = Boolean(alphaMap || m.transparent || (m.opacity !== undefined && m.opacity < 0.999));
 
               m = new THREE.MeshStandardMaterial({
                 name: m.name,
-                color: new THREE.Color(0xffffff),
-                map: baseMap,
-                normalMap: normalMap,
+                // Preserva a cor difusa Kd definida no MTL sem branquear
+                color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+                map: baseMap ? calibrateTexture(baseMap, true) : null,
+                normalMap: normalMap ? calibrateTexture(normalMap, false) : null,
                 roughnessMap: roughnessMap,
                 metalnessMap: metallicMap,
-                alphaMap: alphaMap,
-                roughness: roughnessMap ? 1.0 : 0.65,
-                metalness: metallicMap ? 1.0 : 0.05,
-                transparent: Boolean(alphaMap || m.transparent),
+                aoMap: aoMap,
+                alphaMap: alphaMap ? calibrateTexture(alphaMap, false) : null,
+                roughness: roughnessMap ? 1.0 : convertedRoughness,
+                metalness: metallicMap ? 1.0 : convertedMetalness,
+                transparent: hasAlpha,
+                alphaTest: hasAlpha ? 0.05 : 0,
+                alphaToCoverage: hasAlpha,
+                depthWrite: true,
+                depthTest: true,
                 side: THREE.DoubleSide,
               });
+
+              return m;
             }
 
+            // =========================================================================
+            // CASO 3: MetaHuman Especializado (Unreal Engine Groom Cards & SSS Head)
+            // =========================================================================
             m.side = THREE.DoubleSide;
 
-            // 1. Pelos de Roupas, Cartões de Pelugem e Pelos Sintéticos (Sketchfab & Unreal PBR Standard)
+            // 1. Pelos de Roupas, Cartões de Pelugem e Pelos Sintéticos
             const isFurOrCards = matName.includes('fur') || matName.includes('pelo') ||
                                  matName.includes('card') || nodeName.includes('fur');
 
             if (isFurOrCards) {
-              m.roughness = 0.90; // Pelos orgânicos e foscos
+              m.roughness = 0.90;
               m.metalness = 0.0;
               m.transparent = true;
-              // No Sketchfab, alphaTest em cartões de pelo/cabelo é baixo (0.05) para não decepar as pontas finas dos fios
               m.alphaTest = 0.05;
-              m.depthWrite = true; // Permite oclusão e profundidade correta sem ver através do corpo
+              m.depthWrite = true;
               m.depthTest = true;
               m.alphaToCoverage = true;
-              m.side = THREE.DoubleSide; // Ambas as faces visíveis em cartões 2D
+              m.side = THREE.DoubleSide;
               if (m.color) m.color.setHex(0xffffff);
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.25;
               return m;
@@ -495,7 +647,6 @@ export class Renderer {
             // 2. Fios de Cabelo do MetaHuman (CardsMesh no padrão Unreal Engine Groom Cards)
             else if (isMetaHuman && (matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow')))) {
               const originalNormal = m.normalMap || null;
-              // Preservar a textura original dos cards do MetaHuman (Unreal Engine baked PNG)
               const hasOriginalMap = Boolean(m.map);
               const hairGroom = hasOriginalMap ? null : this._createProceduralHairStrands();
               const diffuseMap = hasOriginalMap ? m.map : hairGroom.map;
@@ -508,7 +659,7 @@ export class Renderer {
                 map: diffuseMap,
                 alphaMap: alphaMap,
                 normalMap: originalNormal,
-                roughness: 0.45, // PBR queratina natural do Unreal Hair Shader
+                roughness: 0.45,
                 metalness: 0.0,
                 clearcoat: 0.40,
                 clearcoatRoughness: 0.22,
@@ -518,7 +669,7 @@ export class Renderer {
                 sheenColor: new THREE.Color(0x52321c),
                 sheenRoughness: 0.30,
                 transparent: true,
-                alphaTest: 0.05, // Recorte fino anti-aliasing preservando 100% da volumetria dos fios originais
+                alphaTest: 0.05,
                 depthWrite: true,
                 depthTest: true,
                 alphaToCoverage: true,
@@ -526,7 +677,6 @@ export class Renderer {
                 name: m.name,
               });
 
-              // Compatibilidade com texturas de Groom do Unreal Engine
               node.userData.groomSlots = {
                 diffuse: diffuseMap,
                 alpha: alphaMap,
@@ -538,7 +688,7 @@ export class Renderer {
               if (hairMat.envMapIntensity !== undefined) hairMat.envMapIntensity = 0.55;
               return hairMat;
             }
-            // 3. Sobrancelhas do MetaHuman (CardsMesh — Preservando Textura Original ou Procedural Fallback)
+            // 3. Sobrancelhas do MetaHuman
             else if (isMetaHuman && matName.includes('eyebrow')) {
               const hasOriginalMap = Boolean(m.map);
               const browGroom = hasOriginalMap ? null : this._createProceduralEyebrowTextures();
@@ -578,7 +728,7 @@ export class Renderer {
               if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.50;
               return browMat;
             }
-            // 4. Cílios do MetaHuman (Preservando Textura Original ou Procedural Fallback)
+            // 4. Cílios do MetaHuman
             else if (isMetaHuman && (matName.includes('eyelashes') || matName.includes('lashmat') || matName.includes('lash_mat'))) {
               const hasOriginalMap = Boolean(m.map);
               const lashTex = hasOriginalMap ? null : this._createProceduralEyelashTextures();
@@ -612,7 +762,6 @@ export class Renderer {
               });
 
               if (!hasOriginalMap) {
-                // Tapering procedural caso não haja textura original
                 lashMat.onBeforeCompile = (shader) => {
                   shader.fragmentShader = shader.fragmentShader.replace(
                     '#include <alphamap_fragment>',
@@ -627,33 +776,10 @@ export class Renderer {
               if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.55;
               return lashMat;
             }
-            // 5. Cabelos de Personagens Estilizados e Gerais (Winter Girl, etc.)
-            else if (matName.includes('hair') || matName.includes('cabelo') || nodeName.includes('hair')) {
-              m.roughness = 0.75; // Cabelo fosco estilizado (não-metálico)
-              m.metalness = 0.0;
-              if (m.alphaMap) {
-                m.transparent = true;
-                // No Sketchfab, alphaTest em cartões de cabelo é baixo (0.05) para não decepar as pontas finas dos fios
-                m.alphaTest = 0.05;
-                m.depthWrite = true;
-                m.depthTest = true;
-                m.alphaToCoverage = true;
-              }
-              m.side = THREE.DoubleSide;
-              if (m.clearcoat !== undefined) m.clearcoat = 0.0;
-              if (m.specularIntensity !== undefined) m.specularIntensity = 0.25;
-              if (m.specularColor !== undefined) m.specularColor.setHex(0x111111);
-              if (m.anisotropy !== undefined) m.anisotropy = 0.0;
-              if (m.sheen !== undefined) m.sheen = 0.0;
-              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.40;
-              if (m.color) m.color.setHex(0xffffff);
-              return m;
-            }
-            // 6. Pele / Cabeça / Corpo do MetaHuman e Avatares PBR
+            // 5. Pele / Cabeça / Corpo do MetaHuman
             else if (matName.includes('head_shader') || matName.includes('body_mi') || matName.includes('skin') || matName.includes('face') || matName.includes('head') || nodeName === 'head') {
-              m.roughness = 0.58; // Rugosidade natural de pele humana (micro-textura)
+              m.roughness = 0.58;
               m.metalness = 0.0;
-              // A pele do crânio é sólida: garante gravação de profundidade e remove transparência acidental
               m.transparent = false;
               m.depthWrite = true;
               m.depthTest = true;
@@ -663,9 +789,9 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 7. Roupas, Casacos, Calças, Braços, Peito, Sapatos e Acessórios (excluindo pelos/fur)
-            else if (!matName.includes('fur') && !nodeName.includes('fur') && (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit') || matName.includes('coat') || matName.includes('arm') || matName.includes('chest') || matName.includes('trouser') || matName.includes('skirt') || matName.includes('shoe') || matName.includes('accessoire') || matName.includes('luggage') || matName.includes('tool'))) {
-              m.roughness = m.roughnessMap ? 1.0 : 0.80; // Tecido fosco / PBR
+            // 6. Roupas do MetaHuman
+            else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit') || matName.includes('coat') || matName.includes('trouser') || matName.includes('shoe')) {
+              m.roughness = m.roughnessMap ? 1.0 : 0.80;
               m.metalness = m.metalnessMap ? 1.0 : 0.0;
               m.transparent = false;
               m.depthWrite = true;
@@ -675,7 +801,7 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.3;
               return m;
             }
-            // 8. Dentes e Boca
+            // 7. Dentes e Boca
             else if (matName.includes('teeth')) {
               m.roughness = 0.28;
               m.metalness = 0.0;
@@ -683,7 +809,7 @@ export class Renderer {
               m.side = THREE.DoubleSide;
               return m;
             }
-            // 9. Camadas Oclusoras dos Olhos / Hidden Shells (desativar para não cobrir o globo ocular)
+            // 8. Camadas Oclusoras dos Olhos / Hidden Shells
             else if (matName.includes('eyeshell') || matName.includes('eyeedge') || matName.includes('saliva') || matName.includes('cartilage') || matName.includes('m_hide') || matName.includes('lacrimal')) {
               m.transparent = true;
               m.opacity = 0.0;
@@ -691,9 +817,9 @@ export class Renderer {
               m.visible = false;
               return m;
             }
-            // 10. Globo Ocular / Íris / Esclera
+            // 9. Globo Ocular / Íris / Esclera
             else if (matName.includes('eyeleft') || matName.includes('eyeright') || matName.includes('eyeball') || matName.includes('eyel_baked') || matName.includes('eyer_baked') || matName.includes('eye') || nodeName === 'eyes') {
-              m.roughness = 0.12; // Córnea nítida com reflexo especular equilibrado
+              m.roughness = 0.12;
               m.metalness = 0.0;
               m.transparent = false;
               m.opacity = 1.0;
@@ -708,7 +834,6 @@ export class Renderer {
             m.side = THREE.DoubleSide;
             m.depthWrite = true;
             m.depthTest = true;
-            if (m.color) m.color.setHex(0xffffff);
             return m;
           });
 
@@ -748,6 +873,25 @@ export class Renderer {
 
     const targetDim = isFullBody ? Math.max(size.x, size.y) * 1.5 : Math.max(fullSize.x, fullSize.y, fullSize.z);
     const scale  = 1.0 / (targetDim || 1);
+
+    // Update Ground Contact Shadow Plane position to match character feet
+    if (this._groundPlane) {
+      const bottomY = (fullBox.min.y - centre.y) * scale;
+      this._groundPlane.position.y = bottomY - 0.002;
+    }
+
+    // Dynamic key light shadow camera frustum fitting to model bounding box
+    if (this._keyLight && this._keyLight.shadow && this._keyLight.shadow.camera) {
+      const cam = this._keyLight.shadow.camera;
+      const radius = Math.max(fullSize.x, fullSize.y, fullSize.z) * 1.2;
+      cam.left = -radius;
+      cam.right = radius;
+      cam.top = radius;
+      cam.bottom = -radius;
+      cam.near = 0.1;
+      cam.far = 25;
+      cam.updateProjectionMatrix();
+    }
 
     // Save model's native rest transform (before centering and scaling for viewport)
     model.userData.restTransform = {
@@ -1187,7 +1331,7 @@ export class Renderer {
       matName.includes('decal')
     );
 
-    const baseAlphaTest = orig.alphaTest > 0 ? orig.alphaTest : (isAlpha ? 0.35 : 0);
+    const baseAlphaTest = orig.alphaTest > 0 ? orig.alphaTest : (isAlpha ? 0.05 : 0);
     const baseSide = orig.side || THREE.DoubleSide;
 
     switch (mode) {
@@ -1274,8 +1418,9 @@ export class Renderer {
       }
 
       case 'wireframe': {
-        if (orig.wireframe !== undefined) orig.wireframe = true;
-        return orig;
+        const wfMat = orig.clone();
+        wfMat.wireframe = true;
+        return wfMat;
       }
 
       case 'unreal':
@@ -1283,7 +1428,6 @@ export class Renderer {
       case 'sunset':
       case 'cyber':
       default: {
-        if (orig.wireframe !== undefined) orig.wireframe = false;
         return orig;
       }
     }
@@ -1358,6 +1502,34 @@ export class Renderer {
         node.userData.smoothMaterial.roughness = 0.45 + (this._smoothLevel * 0.5);
       }
     });
+  }
+
+  /**
+   * Set tone mapping exposure (0.1 to 3.0).
+   * @param {number} val
+   */
+  setExposure(val) {
+    const exp = Math.max(0.1, Math.min(3.0, Number(val)));
+    this._renderer.toneMappingExposure = exp;
+  }
+
+  /**
+   * Get current tone mapping exposure.
+   * @returns {number}
+   */
+  getExposure() {
+    return this._renderer.toneMappingExposure;
+  }
+
+  /**
+   * Toggle ground contact shadow plane.
+   * @param {boolean} enabled
+   */
+  setGroundShadow(enabled) {
+    this._groundShadowEnabled = Boolean(enabled);
+    if (this._groundPlane) {
+      this._groundPlane.visible = this._groundShadowEnabled;
+    }
   }
 
   _updateLightPosition() {
@@ -1561,8 +1733,11 @@ export class Renderer {
     this._keyLight = new THREE.DirectionalLight(0xfff6ee, 2.4);
     this._keyLight.position.set(1.4, 1.8, 2.2);
     this._keyLight.castShadow = true;
-    this._keyLight.shadow.mapSize.set(1024, 1024);
+    this._keyLight.shadow.mapSize.set(2048, 2048);
     this._keyLight.shadow.bias = -0.0001;
+    this._keyLight.shadow.normalBias = 0.02;
+    this._keyLight.shadow.camera.near = 0.1;
+    this._keyLight.shadow.camera.far = 25;
     this._scene.add(this._keyLight);
 
     // Fill Light: Soft cool fill on shadow side to preserve hair volume & skin micro-contrast
@@ -1574,6 +1749,15 @@ export class Renderer {
     this._rimLight = new THREE.DirectionalLight(0xffeedd, 1.6);
     this._rimLight.position.set(0.2, 2.2, -2.2);
     this._scene.add(this._rimLight);
+
+    // Ground Contact Shadow Plane (Sketchfab & Unreal Studio style)
+    const groundGeo = new THREE.PlaneGeometry(14, 14);
+    const groundMat = new THREE.ShadowMaterial({ opacity: 0.35 });
+    this._groundPlane = new THREE.Mesh(groundGeo, groundMat);
+    this._groundPlane.rotation.x = -Math.PI / 2;
+    this._groundPlane.position.y = -1.0;
+    this._groundPlane.receiveShadow = true;
+    this._scene.add(this._groundPlane);
 
     this._updateLightPosition();
   }
