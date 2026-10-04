@@ -1718,12 +1718,25 @@ body.app-loading-active .timeline-dock {
   justify-content: center;
   gap: 8px;
   margin-top: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--label-primary);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.tl-export-label {
-  font-size: 11px;
-  font-weight: 600;
-  margin-left: 2px;
+.export-action-trigger:hover {
+  background: var(--sys-blue);
+  color: #ffffff;
+  border-color: var(--sys-blue);
+  box-shadow: 0 4px 14px rgba(10, 132, 255, 0.38);
+}
+
+.export-action-trigger:active {
+  background: var(--sys-blue-hover);
+  border-color: var(--sys-blue-hover);
+  transform: scale(0.98);
 }
 
 
