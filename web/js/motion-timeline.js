@@ -25,6 +25,10 @@ export class MotionTimeline {
     /** @type {Array<{ time: number, blendShapes: Record<string, number>, rotation: { pitch: number, yaw: number, roll: number }|null }>} */
     this.frames = [];
 
+    /** @type {Map<number, { time: number, blendShapes: Record<string, number>, rotation: Object|null }>} */
+    this.keyframes = new Map();
+    this.clipName = 'Tomada 1';
+
     // State
     this.isRecording = false;
     this.isPaused = false;
@@ -76,11 +80,29 @@ export class MotionTimeline {
    */
   setWaveformCanvas(canvas) {
     this.waveformCanvas = canvas;
-    if (this.waveformCanvas && window.ResizeObserver) {
-      const ro = new ResizeObserver(() => {
-        this.drawWaveform();
+    if (this.waveformCanvas) {
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+          this.drawWaveform();
+        });
+        ro.observe(this.waveformCanvas);
+      }
+
+      // Add click & snap listener on track canvas
+      this.waveformCanvas.addEventListener('click', (e) => {
+        const rect = this.waveformCanvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const width = rect.width;
+        if (width > 0 && this.totalDuration > 0) {
+          const targetTime = (clickX / width) * this.totalDuration;
+          const nearestKeyframe = this._findNearestKeyframe(targetTime, 0.08);
+          if (nearestKeyframe !== null) {
+            this.scrub(nearestKeyframe);
+          } else {
+            this.scrub(targetTime);
+          }
+        }
       });
-      ro.observe(this.waveformCanvas);
     }
     this.drawWaveform();
   }
@@ -229,6 +251,203 @@ export class MotionTimeline {
     }
 
     this._notify();
+  }
+
+  /* ─── Keyframe & Animation Clip Management ─────────────────────────────── */
+
+  /**
+   * Loads an extracted animation clip from 3D model into the timeline with discrete keyframes.
+   * @param {Object} clipData
+   * @param {string} [clipData.name]
+   * @param {number} clipData.duration
+   * @param {Array<{ time: number, blendShapes: Record<string, number>, rotation: Object|null }>} clipData.frames
+   * @param {number[]} [clipData.keyframeTimes]
+   */
+  loadAnimationClip({ name = 'Animation', duration, frames, keyframeTimes = [] }) {
+    this.stopPlayback();
+    this.frames = frames || [];
+    this.totalDuration = Math.max(0.01, duration);
+    this.trimIn = 0;
+    this.trimOut = this.totalDuration;
+    this.currentTime = 0;
+    this.clipName = name;
+    this._accumulatedTime = this.totalDuration;
+
+    // Populate discrete keyframes
+    this.keyframes = new Map();
+    if (keyframeTimes && keyframeTimes.length > 0) {
+      keyframeTimes.forEach((t) => {
+        const frame = this.getInterpolatedFrame(t);
+        if (frame) {
+          const roundedT = parseFloat(t.toFixed(4));
+          this.keyframes.set(roundedT, {
+            time: roundedT,
+            blendShapes: { ...frame.blendShapes },
+            rotation: frame.rotation ? { ...frame.rotation } : null,
+          });
+        }
+      });
+    } else {
+      // Mark start and end
+      if (this.frames.length > 0) {
+        const f0 = this.frames[0];
+        const fEnd = this.frames[this.frames.length - 1];
+        this.keyframes.set(f0.time, { time: f0.time, blendShapes: { ...f0.blendShapes }, rotation: f0.rotation });
+        this.keyframes.set(fEnd.time, { time: fEnd.time, blendShapes: { ...fEnd.blendShapes }, rotation: fEnd.rotation });
+      }
+    }
+
+    this.drawWaveform();
+    this.scrub(0);
+    this._notify();
+    console.log(`[MotionTimeline] Clípe "${name}" carregado: ${this.totalDuration.toFixed(2)}s, ${this.frames.length} quadros, ${this.keyframes.size} keyframes.`);
+  }
+
+  /**
+   * Inserts or updates a keyframe at the target timestamp.
+   * @param {number|null} [time=null] - Timestamp in seconds (defaults to currentTime)
+   * @param {Record<string, number>} [blendShapes={}] - Blendshape values
+   * @param {Object|null} [rotation=null] - Head rotation 3DoF
+   * @returns {number} The recorded timestamp
+   */
+  insertKeyframe(time = null, blendShapes = {}, rotation = null) {
+    const t = time !== null ? Math.max(0, time) : this.currentTime;
+    const roundedT = parseFloat(t.toFixed(4));
+
+    const copiedShapes = { ...blendShapes };
+    const copiedRot = rotation ? {
+      pitch: rotation.pitch || 0,
+      yaw: rotation.yaw || 0,
+      roll: rotation.roll || 0,
+    } : null;
+
+    if (!this.keyframes) this.keyframes = new Map();
+    this.keyframes.set(roundedT, {
+      time: roundedT,
+      blendShapes: copiedShapes,
+      rotation: copiedRot,
+    });
+
+    // Expand total duration if keyframe is beyond current duration
+    if (roundedT > this.totalDuration) {
+      this.totalDuration = roundedT;
+      this.trimOut = this.totalDuration;
+    }
+
+    // Insert/update frame into this.frames array maintaining sorted order
+    const existingIdx = this.frames.findIndex((f) => Math.abs(f.time - roundedT) < 0.005);
+    if (existingIdx >= 0) {
+      this.frames[existingIdx] = {
+        time: roundedT,
+        blendShapes: copiedShapes,
+        rotation: copiedRot,
+      };
+    } else {
+      this.frames.push({
+        time: roundedT,
+        blendShapes: copiedShapes,
+        rotation: copiedRot,
+      });
+      this.frames.sort((a, b) => a.time - b.time);
+    }
+
+    this.drawWaveform();
+    this._notify();
+    return roundedT;
+  }
+
+  /**
+   * Deletes keyframe at or near the given timestamp.
+   * @param {number|null} [time=null]
+   * @returns {boolean} True if a keyframe was removed
+   */
+  deleteKeyframe(time = null) {
+    const targetTime = time !== null ? time : this.currentTime;
+    if (!this.keyframes || this.keyframes.size === 0) return false;
+
+    let closestTime = null;
+    let minDiff = 0.06;
+
+    for (const kTime of this.keyframes.keys()) {
+      const diff = Math.abs(kTime - targetTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestTime = kTime;
+      }
+    }
+
+    if (closestTime !== null) {
+      this.keyframes.delete(closestTime);
+      this.drawWaveform();
+      this._notify();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Checks if a keyframe exists near the specified timestamp.
+   * @param {number} time
+   * @param {number} [tolerance=0.04]
+   * @returns {boolean}
+   */
+  hasKeyframeNear(time, tolerance = 0.04) {
+    if (!this.keyframes || this.keyframes.size === 0) return false;
+    for (const kTime of this.keyframes.keys()) {
+      if (Math.abs(kTime - time) <= tolerance) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Jump playhead to next keyframe timestamp.
+   */
+  jumpToNextKeyframe() {
+    if (!this.keyframes || this.keyframes.size === 0) return;
+    const sortedTimes = Array.from(this.keyframes.keys()).sort((a, b) => a - b);
+    const next = sortedTimes.find((t) => t > this.currentTime + 0.02);
+    if (next !== undefined) {
+      this.scrub(next);
+    } else if (sortedTimes.length > 0) {
+      this.scrub(sortedTimes[sortedTimes.length - 1]);
+    }
+  }
+
+  /**
+   * Jump playhead to previous keyframe timestamp.
+   */
+  jumpToPrevKeyframe() {
+    if (!this.keyframes || this.keyframes.size === 0) return;
+    const sortedTimes = Array.from(this.keyframes.keys()).sort((a, b) => a - b);
+    const prevList = sortedTimes.filter((t) => t < this.currentTime - 0.02);
+    if (prevList.length > 0) {
+      this.scrub(prevList[prevList.length - 1]);
+    } else if (sortedTimes.length > 0) {
+      this.scrub(sortedTimes[0]);
+    }
+  }
+
+  _findNearestKeyframe(time, threshold = 0.06) {
+    if (!this.keyframes || this.keyframes.size === 0) return null;
+    let nearest = null;
+    let minDiff = threshold;
+    for (const kTime of this.keyframes.keys()) {
+      const diff = Math.abs(kTime - time);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearest = kTime;
+      }
+    }
+    return nearest;
+  }
+
+  /**
+   * Get sorted list of keyframes.
+   * @returns {Array<{ time: number, blendShapes: Record<string, number>, rotation: Object|null }>}
+   */
+  getKeyframesList() {
+    if (!this.keyframes) return [];
+    return Array.from(this.keyframes.values()).sort((a, b) => a.time - b.time);
   }
 
   /* ─── Playback & Scrubbing Controls ─────────────────────────────────────── */
@@ -581,48 +800,75 @@ export class MotionTimeline {
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
-    if (!this.waveformPeaks || this.waveformPeaks.length === 0) {
-      ctx.restore();
-      return;
+    if (this.waveformPeaks && this.waveformPeaks.length > 0) {
+      const peaks = this.waveformPeaks;
+      const numBins = peaks.length;
+      const midY = height / 2;
+      const barWidth = Math.max(1.2, width / numBins);
+
+      // Audio duration vs total timeline duration
+      const audioDur = this.audioBuffer ? this.audioBuffer.duration : this.totalDuration;
+      const durRatio = this.totalDuration > 0 ? Math.min(1.0, audioDur / this.totalDuration) : 1.0;
+      const activeWidth = width * durRatio;
+
+      // Gradient styling: Electric Indigo to Cyan (Apple HIG)
+      const gradient = ctx.createLinearGradient(0, 0, width, 0);
+      gradient.addColorStop(0, 'rgba(99, 102, 241, 0.7)');
+      gradient.addColorStop(0.5, 'rgba(6, 182, 212, 0.85)');
+      gradient.addColorStop(1, 'rgba(129, 140, 248, 0.7)');
+
+      ctx.fillStyle = gradient;
+
+      for (let i = 0; i < numBins; i++) {
+        const x = (i / numBins) * activeWidth;
+        const amp = peaks[i];
+        const barHeight = Math.max(1.5, amp * (height * 0.78));
+        const y = midY - barHeight / 2;
+
+        // Check if within trim range
+        const timeAtBar = (x / width) * this.totalDuration;
+        const isInsideTrim = timeAtBar >= this.trimIn && timeAtBar <= this.trimOut;
+
+        ctx.globalAlpha = isInsideTrim ? 0.9 : 0.28;
+
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, Math.max(1, barWidth - 0.5), barHeight, 1);
+        } else {
+          ctx.rect(x, y, Math.max(1, barWidth - 0.5), barHeight);
+        }
+        ctx.fill();
+      }
     }
 
-    const peaks = this.waveformPeaks;
-    const numBins = peaks.length;
-    const midY = height / 2;
-    const barWidth = Math.max(1.2, width / numBins);
+    // ── Draw Keyframe Diamonds (Blender & Apple HIG Style) ──
+    if (this.totalDuration > 0 && this.keyframes && this.keyframes.size > 0) {
+      for (const [kTime] of this.keyframes.entries()) {
+        const kx = (kTime / this.totalDuration) * width;
+        const ky = Math.min(height - 6, 7);
+        const size = 5.5;
+        const isSelected = Math.abs(kTime - this.currentTime) < 0.04;
 
-    // Audio duration vs total timeline duration
-    const audioDur = this.audioBuffer ? this.audioBuffer.duration : this.totalDuration;
-    const durRatio = this.totalDuration > 0 ? Math.min(1.0, audioDur / this.totalDuration) : 1.0;
-    const activeWidth = width * durRatio;
+        ctx.save();
+        ctx.translate(kx, ky);
+        ctx.rotate(Math.PI / 4); // 45 degree diamond
 
-    // Gradient styling: Electric Indigo to Cyan (Apple HIG)
-    const gradient = ctx.createLinearGradient(0, 0, width, 0);
-    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.7)');
-    gradient.addColorStop(0.5, 'rgba(6, 182, 212, 0.85)');
-    gradient.addColorStop(1, 'rgba(129, 140, 248, 0.7)');
+        // Diamond fill
+        ctx.fillStyle = isSelected ? '#f59e0b' : '#06b6d4';
+        ctx.shadowColor = isSelected ? 'rgba(245, 158, 11, 0.9)' : 'rgba(6, 182, 212, 0.75)';
+        ctx.shadowBlur = isSelected ? 8 : 4;
 
-    ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.rect(-size / 2, -size / 2, size, size);
+        ctx.fill();
 
-    for (let i = 0; i < numBins; i++) {
-      const x = (i / numBins) * activeWidth;
-      const amp = peaks[i];
-      const barHeight = Math.max(1.5, amp * (height * 0.78));
-      const y = midY - barHeight / 2;
+        // Diamond outline
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.9)';
+        ctx.stroke();
 
-      // Check if within trim range
-      const timeAtBar = (x / width) * this.totalDuration;
-      const isInsideTrim = timeAtBar >= this.trimIn && timeAtBar <= this.trimOut;
-
-      ctx.globalAlpha = isInsideTrim ? 0.9 : 0.28;
-
-      ctx.beginPath();
-      if (typeof ctx.roundRect === 'function') {
-        ctx.roundRect(x, y, Math.max(1, barWidth - 0.5), barHeight, 1);
-      } else {
-        ctx.rect(x, y, Math.max(1, barWidth - 0.5), barHeight);
+        ctx.restore();
       }
-      ctx.fill();
     }
 
     ctx.restore();
@@ -715,6 +961,9 @@ export class MotionTimeline {
         trimIn: this.trimIn,
         trimOut: this.trimOut,
         frameCount: this.frames.length,
+        keyframeCount: this.keyframes ? this.keyframes.size : 0,
+        hasKeyframeAtPlayhead: this.hasKeyframeNear(this.currentTime),
+        clipName: this.clipName || 'Tomada 1',
       });
     }
   }

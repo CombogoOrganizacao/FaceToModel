@@ -92,7 +92,7 @@
 
     <!-- ── Timeline Inferior Estilo Blender ── -->
     <div class="timeline-dock" id="timeline-dock">
-      <!-- 1. Controles de Transporte (Esquerda) -->
+      <!-- 1. Controles de Transporte & Keyframes (Esquerda) -->
       <div class="tl-transport">
         <button class="tl-btn rec" id="btn-tl-rec" title="Gravar / Continuar Movimento">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
@@ -123,6 +123,32 @@
             <path d="M21 13v2a4 4 0 0 1-4 4H3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <div class="tl-divider"></div>
+        <button class="tl-btn" id="btn-tl-prev-kf" title="Keyframe Anterior (J)">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="6" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="tl-btn kf-add" id="btn-tl-add-kf" title="Inserir / Gravar Keyframe no Playhead (I)">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polygon points="12 2 22 12 12 22 2 12 12 2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linejoin="round"/>
+            <line x1="12" y1="8" x2="12" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="tl-btn kf-del" id="btn-tl-del-kf" title="Remover Keyframe no Playhead (Alt+I)">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polygon points="12 2 22 12 12 22 2 12 12 2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linejoin="round"/>
+            <line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="tl-btn" id="btn-tl-next-kf" title="Próximo Keyframe (K)">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="18" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
 
       <!-- 2. Display de Tempo & Régua Interativa (Centro) -->
@@ -133,7 +159,10 @@
             <span class="tl-time-sep">/</span>
             <span class="tl-time-total" id="tl-time-total">00:00.00</span>
           </div>
-          <div class="tl-badge-frame" id="tl-frame-badge">Quadro 0 (0 gravados)</div>
+          <div class="tl-badge-frame" id="tl-frame-badge">Quadro 0 (0 keyframes)</div>
+          <div class="tl-clip-selector-wrap" id="tl-clip-selector-wrap" style="display: none;">
+            <select class="tl-clip-select" id="select-tl-clip" title="Selecionar Ação / Clípe de Animação"></select>
+          </div>
         </div>
 
         <div class="tl-track-area" id="tl-track-area">
@@ -158,6 +187,13 @@
 
       <!-- 3. Ações da Timeline (Direita) -->
       <div class="tl-actions">
+        <button class="tl-action-btn secondary" id="btn-tl-import-anim" title="Importar Animação (.glb / .fbx)" aria-label="Importar Animação">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <input type="file" id="input-anim-file" accept=".glb,.gltf,.fbx" style="display: none;" />
+
         <button class="tl-action-btn secondary" id="btn-tl-audio-mute" title="Ativar/Desativar Áudio da Timeline" aria-label="Mudo">
           <svg class="svg-icon sm" id="icon-tl-audio" viewBox="0 0 24 24">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/>

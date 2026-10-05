@@ -1161,9 +1161,28 @@ html, body {
   color: #fff;
 }
 
-.tl-btn.active {
-  color: var(--sys-blue);
-  border-color: rgba(10, 132, 255, 0.3);
+.tl-btn.kf-add {
+  color: #38bdf8;
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.25);
+}
+
+.tl-btn.kf-add:hover {
+  background: rgba(6, 182, 212, 0.25);
+  color: #fff;
+  border-color: rgba(6, 182, 212, 0.5);
+}
+
+.tl-btn.kf-del {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.tl-btn.kf-del:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .tl-divider {
@@ -1217,6 +1236,32 @@ html, body {
   background: rgba(255, 255, 255, 0.05);
   padding: 2px 6px;
   border-radius: 4px;
+  white-space: nowrap;
+}
+
+.tl-clip-selector-wrap {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.tl-clip-select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: var(--sys-blue);
+  font-family: var(--font-system);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.tl-clip-select:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(10, 132, 255, 0.4);
 }
 
 /* Track Area */

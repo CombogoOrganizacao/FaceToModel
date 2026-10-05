@@ -189,6 +189,10 @@ export class Renderer {
     /* ── Clock ── */
     this._clock = new THREE.Clock();
 
+    /* ── Animation System & Clips ── */
+    this.animations = [];
+    this._mixer = null;
+
     /* ── Model state ── */
     this._model = null;
     this._headBone = null;
@@ -247,6 +251,14 @@ export class Renderer {
       this.blendshapeCoverage = 0;
     }
 
+    // Reset animation state
+    this.animations = [];
+    if (this._mixer) {
+      this._mixer.stopAllAction();
+      this._mixer.uncacheRoot(this._model);
+      this._mixer = null;
+    }
+
     const lowerName = (filename || url).toLowerCase();
     console.log(`[Renderer] Loading 3D model (${lowerName}): ${url}`);
 
@@ -256,7 +268,11 @@ export class Renderer {
 
     if (lowerName.endsWith('.fbx')) {
       const fbxLoader = new FBXLoader(loadingManager);
-      model = await fbxLoader.loadAsync(url);
+      const fbx = await fbxLoader.loadAsync(url);
+      model = fbx;
+      if (fbx.animations && fbx.animations.length > 0) {
+        this.animations = fbx.animations;
+      }
     } else if (lowerName.endsWith('.obj')) {
       // Check if there is an accompanying .mtl file
       const mtlKey = Object.keys(assetMap).find((k) => k.toLowerCase().endsWith('.mtl'));
@@ -393,8 +409,9 @@ export class Renderer {
     } else {
       // Standard GLTF / GLB loader with KTX2, DRACO and IndexedDB Binary Cache
       this._loader.manager = loadingManager;
+      let gltf;
       if (url.startsWith('blob:') || url.startsWith('data:')) {
-        const gltf = await this._loader.loadAsync(url, onProgress ? (xhr) => {
+        gltf = await this._loader.loadAsync(url, onProgress ? (xhr) => {
           if (xhr.lengthComputable) {
             onProgress({ loaded: xhr.loaded, total: xhr.total, percent: Math.round((xhr.loaded / xhr.total) * 100) });
           }
@@ -403,8 +420,11 @@ export class Renderer {
       } else {
         // Stream / load from IndexedDB cache with progress
         const buffer = await modelCache.fetchWithCache(url, onProgress);
-        const gltf = await this._loader.parseAsync(buffer, '');
+        gltf = await this._loader.parseAsync(buffer, '');
         model = gltf.scene;
+      }
+      if (gltf && gltf.animations && gltf.animations.length > 0) {
+        this.animations = gltf.animations;
       }
     }
 
@@ -1090,6 +1110,12 @@ export class Renderer {
     this.setTexturesEnabled(this._showTextures);
     this._applyLightingIntensities();
 
+    if (this.animations.length > 0) {
+      this._mixer = new THREE.AnimationMixer(model);
+      model.userData.animations = this.animations;
+      console.log(`[Renderer] ${this.animations.length} clipe(s) de animação carregado(s) com o modelo.`);
+    }
+
     this.resetCamera();
     console.log(`[Renderer] Model loaded successfully. Coverage: ${coverage}/52 blendshapes`);
     return model;
@@ -1770,6 +1796,12 @@ export class Renderer {
 
     this._controls.update();
 
+    // ── 0. Animation Mixer Update ──
+    const delta = this._clock.getDelta();
+    if (this._mixer) {
+      this._mixer.update(delta);
+    }
+
     // ── 1. Organic Lerp / EMA Smoothing for Blendshapes ──
     const alpha = 0.38;
     for (const [key, target] of Object.entries(this._targetBlendshapes)) {
@@ -2186,5 +2218,185 @@ export class Renderer {
 
     this._cachedEyebrowTextures = { map: colorTex, alphaMap: alphaTex };
     return this._cachedEyebrowTextures;
+  }
+
+  /**
+   * Returns metadata for all animation clips embedded in or attached to the current model.
+   * @returns {Array<{ index: number, name: string, duration: number, tracksCount: number }>}
+   */
+  getAnimationClips() {
+    if (!this.animations || this.animations.length === 0) return [];
+    return this.animations.map((clip, index) => ({
+      index,
+      name: clip.name || `Animação ${index + 1}`,
+      duration: clip.duration,
+      tracksCount: clip.tracks.length,
+    }));
+  }
+
+  /**
+   * Evaluates and extracts all keyframes from an AnimationClip into MotionTimeline frame format.
+   * @param {THREE.AnimationClip|number|string} clipOrIndex
+   * @param {number} [fps=60]
+   * @returns {{ name: string, duration: number, frames: Array, keyframeTimes: number[] }|null}
+   */
+  extractAnimationClip(clipOrIndex = 0, fps = 60) {
+    if (!this._innerModel || !this.animations || this.animations.length === 0) return null;
+
+    let clip = null;
+    if (typeof clipOrIndex === 'number') {
+      clip = this.animations[clipOrIndex] || this.animations[0];
+    } else if (typeof clipOrIndex === 'string') {
+      clip = this.animations.find((c) => c.name === clipOrIndex) || this.animations[0];
+    } else if (clipOrIndex && clipOrIndex.isAnimationClip) {
+      clip = clipOrIndex;
+    } else {
+      clip = this.animations[0];
+    }
+
+    if (!clip) return null;
+
+    const duration = Math.max(0.01, clip.duration);
+    const keyframeTimesSet = new Set();
+
+    // 1. Gather all unique keyframe timestamps from tracks
+    clip.tracks.forEach((track) => {
+      if (track.times && track.times.length > 0) {
+        for (let i = 0; i < track.times.length; i++) {
+          const t = Math.max(0, Math.min(duration, parseFloat(track.times[i].toFixed(4))));
+          keyframeTimesSet.add(t);
+        }
+      }
+    });
+
+    keyframeTimesSet.add(0);
+    keyframeTimesSet.add(parseFloat(duration.toFixed(4)));
+
+    const keyframeTimes = Array.from(keyframeTimesSet).sort((a, b) => a - b);
+
+    // 2. Sample the clip across the timeline using an isolated AnimationMixer
+    const tempMixer = new THREE.AnimationMixer(this._innerModel);
+    const action = tempMixer.clipAction(clip);
+    action.play();
+
+    const dt = 1.0 / Math.max(1, fps);
+    const totalSteps = Math.ceil(duration / dt) + 1;
+    const sampledTimesSet = new Set(keyframeTimes);
+
+    for (let s = 0; s < totalSteps; s++) {
+      const t = Math.min(duration, s * dt);
+      sampledTimesSet.add(parseFloat(t.toFixed(4)));
+    }
+
+    const allSampleTimes = Array.from(sampledTimesSet).sort((a, b) => a - b);
+    const frames = [];
+    const headBone = this._headBone;
+
+    for (let i = 0; i < allSampleTimes.length; i++) {
+      const t = allSampleTimes[i];
+      tempMixer.setTime(t);
+      tempMixer.update(0);
+
+      // Extract blendshapes
+      const blendShapes = {};
+      if (this._modelMap) {
+        for (const [stdName, targets] of Object.entries(this._modelMap)) {
+          let maxVal = 0;
+          for (let j = 0; j < targets.length; j++) {
+            const { mesh, index } = targets[j];
+            if (mesh.morphTargetInfluences && mesh.morphTargetInfluences[index] !== undefined) {
+              const val = mesh.morphTargetInfluences[index];
+              if (val > maxVal) maxVal = val;
+            }
+          }
+          if (maxVal > 0.001) {
+            blendShapes[stdName] = parseFloat(maxVal.toFixed(4));
+          }
+        }
+      }
+
+      // Extract rotation if head bone is animated
+      let rotation = null;
+      if (headBone) {
+        const euler = new THREE.Euler().setFromQuaternion(headBone.quaternion, 'YXZ');
+        rotation = {
+          pitch: parseFloat(euler.x.toFixed(4)),
+          yaw:   parseFloat(euler.y.toFixed(4)),
+          roll:  parseFloat(euler.z.toFixed(4)),
+        };
+      }
+
+      frames.push({
+        time: t,
+        blendShapes,
+        rotation,
+      });
+    }
+
+    tempMixer.stopAllAction();
+    tempMixer.uncacheRoot(this._innerModel);
+
+    return {
+      name: clip.name || 'Animation',
+      duration,
+      frames,
+      keyframeTimes,
+    };
+  }
+
+  /**
+   * Imports standalone animation file (.glb / .gltf / .fbx) and adds clips to the current character model.
+   * @param {ArrayBuffer|Blob} data
+   * @param {string} [filename='animation.glb']
+   * @returns {Promise<Array<THREE.AnimationClip>>}
+   */
+  async importAnimationFromBuffer(data, filename = 'animation.glb') {
+    if (!this._innerModel) {
+      throw new Error('Nenhum modelo 3D carregado para receber a animação.');
+    }
+
+    const lowerName = filename.toLowerCase();
+    let importedClips = [];
+
+    if (lowerName.endsWith('.fbx')) {
+      const fbxLoader = new FBXLoader();
+      let buffer = data;
+      if (data instanceof Blob) {
+        buffer = await data.arrayBuffer();
+      }
+      const fbx = fbxLoader.parse(buffer, '');
+      if (fbx.animations && fbx.animations.length > 0) {
+        importedClips = fbx.animations;
+      }
+    } else {
+      let buffer = data;
+      if (data instanceof Blob) {
+        buffer = await data.arrayBuffer();
+      }
+      const gltf = await this._loader.parseAsync(buffer, '');
+      if (gltf.animations && gltf.animations.length > 0) {
+        importedClips = gltf.animations;
+      }
+    }
+
+    if (importedClips.length === 0) {
+      throw new Error('O arquivo importado não contém trilhas de animação.');
+    }
+
+    // Add new clips to animations array
+    importedClips.forEach((c, idx) => {
+      if (!c.name || c.name === 'default') {
+        c.name = `${filename.replace(/\.[^/.]+$/, '')}_${idx + 1}`;
+      }
+      this.animations.push(c);
+    });
+
+    if (!this._mixer) {
+      this._mixer = new THREE.AnimationMixer(this._innerModel);
+    }
+    this._innerModel.userData.animations = this.animations;
+
+    console.log(`[Renderer] ${importedClips.length} novos clipes de animação importados de ${filename}.`);
+    return importedClips;
   }
 }

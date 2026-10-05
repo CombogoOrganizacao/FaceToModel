@@ -1203,7 +1203,8 @@ function setupTimeline() {
       timeCurrent.textContent = MotionTimeline.formatTime(state.currentTime);
       timeTotal.textContent = MotionTimeline.formatTime(state.totalDuration);
       const curFrame = Math.round(state.currentTime * 60);
-      frameBadge.textContent = `Quadro ${curFrame} (${state.frameCount} gravados)`;
+      const kfText = state.keyframeCount > 0 ? `${state.keyframeCount} keyframes` : `${state.frameCount} gravados`;
+      frameBadge.textContent = `Quadro ${curFrame} (${kfText})`;
 
       // 5. Cursor Scrubber (Playhead)
       const pct = state.totalDuration > 0 ? (state.currentTime / state.totalDuration) * 100 : 0;
@@ -1222,6 +1223,99 @@ function setupTimeline() {
 
   if (waveformCanvas) {
     motionTimeline.setWaveformCanvas(waveformCanvas);
+  }
+
+  // ── Controles de Keyframes (Blender / Maya Style) ──
+  const btnPrevKf = $('btn-tl-prev-kf');
+  if (btnPrevKf) {
+    btnPrevKf.addEventListener('click', () => {
+      motionTimeline.jumpToPrevKeyframe();
+    });
+  }
+
+  const btnNextKf = $('btn-tl-next-kf');
+  if (btnNextKf) {
+    btnNextKf.addEventListener('click', () => {
+      motionTimeline.jumpToNextKeyframe();
+    });
+  }
+
+  const btnAddKf = $('btn-tl-add-kf');
+  if (btnAddKf) {
+    btnAddKf.addEventListener('click', () => {
+      const currentShapes = renderer ? { ...renderer._currentBlendshapes } : {};
+      const currentRot = renderer ? { ...renderer._currentRotation } : null;
+      const t = motionTimeline.insertKeyframe(null, currentShapes, currentRot);
+      showToast(`Keyframe inserido em ${MotionTimeline.formatTime(t)}`, 'success');
+    });
+  }
+
+  const btnDelKf = $('btn-tl-del-kf');
+  if (btnDelKf) {
+    btnDelKf.addEventListener('click', () => {
+      const removed = motionTimeline.deleteKeyframe();
+      if (removed) {
+        showToast('Keyframe removido no playhead', 'info');
+      } else {
+        showToast('Nenhum keyframe encontrado no cursor', 'info');
+      }
+    });
+  }
+
+  // ── Seletor de Clipes de Animação ──
+  const selectClip = $('select-tl-clip');
+  if (selectClip) {
+    selectClip.addEventListener('change', () => {
+      const clipIdx = parseInt(selectClip.value, 10);
+      if (renderer) {
+        const clipData = renderer.extractAnimationClip(clipIdx);
+        if (clipData) {
+          motionTimeline.loadAnimationClip(clipData);
+          showToast(`Ação "${clipData.name}" carregada na timeline (${clipData.duration.toFixed(1)}s)`, 'info');
+        }
+      }
+    });
+  }
+
+  // ── Importar Arquivo de Animação Avulso (.glb / .fbx) ──
+  const btnImportAnim = $('btn-tl-import-anim');
+  const inputAnimFile = $('input-anim-file');
+  if (btnImportAnim && inputAnimFile) {
+    btnImportAnim.addEventListener('click', () => {
+      inputAnimFile.click();
+    });
+
+    inputAnimFile.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      showToast(`Importando trilhas de animação de "${file.name}"...`, 'info');
+      try {
+        const buffer = await file.arrayBuffer();
+        const newClips = await renderer.importAnimationFromBuffer(buffer, file.name);
+
+        // Atualizar seletor de clipes
+        const allClips = renderer.getAnimationClips();
+        if (selectClip) {
+          selectClip.innerHTML = allClips.map((c) => `<option value="${c.index}">${c.name} (${c.duration.toFixed(1)}s)</option>`).join('');
+          selectClip.value = String(allClips.length - 1);
+        }
+        const clipWrap = $('tl-clip-selector-wrap');
+        if (clipWrap) clipWrap.style.display = 'flex';
+
+        // Carregar a nova animação na timeline
+        const lastClipData = renderer.extractAnimationClip(allClips.length - 1);
+        if (lastClipData) {
+          motionTimeline.loadAnimationClip(lastClipData);
+        }
+        showToast(`${newClips.length} nova(s) animação(ões) vinculada(s) ao modelo com sucesso!`, 'success');
+      } catch (err) {
+        console.error('Erro ao importar animação externa:', err);
+        showToast(`Erro ao importar animação: ${err.message}`, 'error');
+      } finally {
+        inputAnimFile.value = '';
+      }
+    });
   }
 
   // Botão Gravar / Continuar
@@ -1250,7 +1344,7 @@ function setupTimeline() {
   // Botão Play / Pause
   btnPlay.addEventListener('click', () => {
     if (motionTimeline.frames.length < 2) {
-      showToast('Grave movimentos primeiro usando o botão Gravar na timeline.', 'info');
+      showToast('Grave movimentos ou carregue uma animação na timeline.', 'info');
       return;
     }
     motionTimeline.togglePlay();
@@ -1775,7 +1869,7 @@ function setupTimeline() {
     isDraggingHandleOut = false;
   });
 
-  // Teclas de Atalho de Estúdio (Espaço para Play/Pause, R para Gravar)
+  // Teclas de Atalho de Estúdio (Espaço: Play/Pause, R: Gravar, I: Keyframe, J/K: Nav Keyframes)
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
     if (e.code === 'Space') {
@@ -1786,6 +1880,21 @@ function setupTimeline() {
     } else if (e.code === 'KeyR') {
       e.preventDefault();
       btnRec.click();
+    } else if (e.code === 'KeyI') {
+      e.preventDefault();
+      if (e.altKey) {
+        const btnDelKf = $('btn-tl-del-kf');
+        if (btnDelKf) btnDelKf.click();
+      } else {
+        const btnAddKf = $('btn-tl-add-kf');
+        if (btnAddKf) btnAddKf.click();
+      }
+    } else if (e.code === 'KeyJ') {
+      e.preventDefault();
+      motionTimeline.jumpToPrevKeyframe();
+    } else if (e.code === 'KeyK') {
+      e.preventDefault();
+      motionTimeline.jumpToNextKeyframe();
     }
   });
 }
@@ -2128,7 +2237,29 @@ async function loadModel(url, filename = '', assetMap = {}) {
       bannerGen.style.display = coverage < 10 ? 'block' : 'none';
     }
 
-    showToast(`Modelo "${displayName}" pronto! (${coverage}/52 blendshapes)`, 'success');
+    // 3. Atualizar seletor de clipes de animação da Timeline
+    const clips = renderer.getAnimationClips();
+    const clipSelect = $('select-tl-clip');
+    const clipWrap = $('tl-clip-selector-wrap');
+
+    if (clips && clips.length > 0) {
+      if (clipSelect) {
+        clipSelect.innerHTML = clips.map((c) => `<option value="${c.index}">${c.name} (${c.duration.toFixed(1)}s)</option>`).join('');
+        clipSelect.value = '0';
+      }
+      if (clipWrap) clipWrap.style.display = 'flex';
+
+      // Auto-carregar o primeiro clipe na Timeline com seus keyframes
+      const clipData = renderer.extractAnimationClip(0);
+      if (clipData && motionTimeline) {
+        motionTimeline.loadAnimationClip(clipData);
+      }
+      showToast(`Modelo importado com ${clips.length} clipe(s) de animação carregado(s)!`, 'success');
+    } else {
+      if (clipWrap) clipWrap.style.display = 'none';
+      if (clipSelect) clipSelect.innerHTML = '';
+      showToast(`Modelo "${displayName}" pronto! (${coverage}/52 blendshapes)`, 'success');
+    }
   } catch (err) {
     console.error('Erro ao carregar modelo 3D:', err);
     $('model-name').textContent = displayName;
