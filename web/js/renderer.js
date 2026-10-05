@@ -508,14 +508,13 @@ export class Renderer {
                 return m;
               }
 
-              // 3. Offset de profundidade para sobrancelhas e cílios (evita z-fighting com o crânio)
+              // 3. Offset de profundidade e shader de filamentos para sobrancelhas e cílios (evita z-fighting com o crânio)
               const isEyelashOrBrow = matName.includes('lash') || matName.includes('eyebrow') ||
                                       matName.includes('brow') || nodeName.includes('lash') ||
                                       nodeName.includes('eyebrow') || nodeName.includes('brow');
               if (isEyelashOrBrow) {
-                m.polygonOffset = true;
-                m.polygonOffsetFactor = -1.5;
-                m.polygonOffsetUnits = -3;
+                const isLash = matName.includes('lash') || nodeName.includes('lash');
+                this._applyHairStrandShader(m, isLash);
               }
 
               // 4. Cartões de pelos (fur), cabelo, penas e transparência por recorte
@@ -766,8 +765,8 @@ export class Renderer {
               if (browMat.envMapIntensity !== undefined) browMat.envMapIntensity = 0.50;
               return browMat;
             }
-            // 4. Cílios do MetaHuman
-            else if (isMetaHuman && (matName.includes('eyelashes') || matName.includes('lashmat') || matName.includes('lash_mat'))) {
+            // 4. Cílios do MetaHuman (Unreal Groom Cards & Hair Strand Shader)
+            else if (isMetaHuman && (matName.includes('lash') || nodeName.includes('lash'))) {
               const hasOriginalMap = Boolean(m.map);
               const lashTex = hasOriginalMap ? null : this._createProceduralEyelashTextures();
               const diffuseMap = hasOriginalMap ? m.map : lashTex.map;
@@ -780,36 +779,27 @@ export class Renderer {
                 color: hasOriginalMap ? new THREE.Color(0xffffff) : new THREE.Color(0x120c09),
                 map: diffuseMap,
                 alphaMap: alphaMap,
-                roughness: 0.30,
+                roughness: 0.28,
                 metalness: 0.0,
-                specularIntensity: 0.70,
+                specularIntensity: 0.85,
                 specularColor: new THREE.Color(0x503525),
-                sheen: 0.35,
+                sheen: 0.40,
                 sheenColor: new THREE.Color(0x281910),
+                sheenRoughness: 0.25,
                 transparent: true,
-                alphaTest: 0.05,
+                alphaTest: 0.04,
                 depthWrite: true,
                 depthTest: true,
                 polygonOffset: true,
-                polygonOffsetFactor: -2,
-                polygonOffsetUnits: -4,
+                polygonOffsetFactor: -2.5,
+                polygonOffsetUnits: -5.0,
                 alphaToCoverage: true,
                 side: THREE.DoubleSide,
                 vertexColors: hasVertexColor,
                 name: m.name,
               });
 
-              if (!hasOriginalMap) {
-                lashMat.onBeforeCompile = (shader) => {
-                  shader.fragmentShader = shader.fragmentShader.replace(
-                    '#include <alphamap_fragment>',
-                    `#include <alphamap_fragment>
-                    float tipTaper = smoothstep(0.0, 0.92, 1.0 - abs(vUv.y - 0.5) * 1.5);
-                    diffuseColor.a *= clamp(tipTaper, 0.1, 1.0);
-                    `
-                  );
-                };
-              }
+              this._applyHairStrandShader(lashMat, true);
 
               if (lashMat.envMapIntensity !== undefined) lashMat.envMapIntensity = 0.55;
               return lashMat;
@@ -1821,6 +1811,72 @@ export class Renderer {
     this._renderer.setSize(w, h, false);
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Injects high-fidelity Unreal Groom strand rendering & tip tapering into MeshStandard/Physical materials.
+   * Eliminates chunky quad cards and synthesizes fine hair/eyelash micro-filaments with soft alpha falloff.
+   *
+   * @param {THREE.Material} material
+   * @param {boolean} [isEyelash=false]
+   */
+  _applyHairStrandShader(material, isEyelash = false) {
+    if (!material) return;
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = isEyelash ? -2.5 : -1.5;
+    material.polygonOffsetUnits = isEyelash ? -5.0 : -3.0;
+    material.alphaToCoverage = true;
+    material.transparent = true;
+    material.depthWrite = true;
+    material.depthTest = true;
+    material.side = THREE.DoubleSide;
+    if (material.alphaTest <= 0 || material.alphaTest > 0.05) {
+      material.alphaTest = 0.04;
+    }
+
+    const strandShader = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+        // High-precision strand generator & tip tapering for hair / lash groom cards
+        float getProceduralStrandMask(vec2 uv, bool isLash) {
+          float strandRepeat = isLash ? 8.0 : 4.0;
+          float strandU = fract(uv.x * strandRepeat);
+          float strandDist = abs(strandU - 0.5) * 2.0;
+
+          // Tip tapering: narrow towards card tip (along V coordinate)
+          float tipFactor = clamp(1.0 - uv.y * 0.82, 0.08, 1.0);
+          float fiberAlpha = smoothstep(tipFactor, tipFactor * 0.28, strandDist);
+
+          // Root-to-tip subtle opacity gradient
+          float rootTipGradient = smoothstep(0.99, 0.75, uv.y);
+          return clamp(fiberAlpha * rootTipGradient, 0.0, 1.0);
+        }
+        `
+      );
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <alphamap_fragment>',
+        `#include <alphamap_fragment>
+        #ifdef USE_UV
+          #ifdef USE_MAP
+            // If diffuse map has solid alpha or lacks alpha channel, synthesize hair fibers
+            if (diffuseColor.a > 0.90) {
+              diffuseColor.a = getProceduralStrandMask(vUv, ${isEyelash ? 'true' : 'false'});
+            } else {
+              // Enhance existing alpha map with subtle tip tapering
+              diffuseColor.a *= clamp(1.0 - abs(vUv.x - 0.5) * 0.3, 0.6, 1.0);
+            }
+          #else
+            diffuseColor.a = getProceduralStrandMask(vUv, ${isEyelash ? 'true' : 'false'});
+          #endif
+        #endif
+        `
+      );
+    };
+
+    material.onBeforeCompile = strandShader;
+    material.needsUpdate = true;
   }
 
   /**

@@ -16,41 +16,96 @@ import * as THREE from 'three';
 import { FACECAP_MAP, STANDARD_BLENDSHAPES } from './blendshape-mapper.js';
 
 /**
+ * Standard Hermite interpolation for smooth non-linear falloffs.
+ * @param {number} edge0
+ * @param {number} edge1
+ * @param {number} x
+ * @returns {number}
+ */
+export function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Computes anatomical mask weight for facial deformation (0 = locked/protected, 1 = full facial movement).
+ * Strictly eliminates deformation bleeding into ears, neck, occiput and skull back.
+ * Inspired by Faceit, ARKitBlendshapeHelper and OmniFaceRig.
+ *
+ * @param {number} u - Normalized lateral coordinate [-1 (left) to +1 (right)]
+ * @param {number} v - Normalized elevation coordinate [0 (chin) to 1 (forehead)]
+ * @param {number} w - Normalized depth coordinate [0 (back) to 1 (nasal tip)]
+ * @returns {number} Attenuation factor in [0, 1]
+ */
+export function getFacialAnatomicalMask(u, v, w) {
+  const absU = Math.abs(u);
+
+  // 1. Neck / Submental cutoff: vertices below the mandible (v < 0.12) are locked.
+  // Smoothly ramps up from v = 0.08 to v = 0.18, completely shielding cervical spine and trapezius.
+  const neckWeight = smoothstep(0.08, 0.20, v);
+  if (neckWeight <= 0) return 0;
+
+  // 2. Cranial Back / Occiput cutoff: vertices in the back half of the skull (w < 0.32) are locked.
+  const depthWeight = smoothstep(0.28, 0.44, w);
+  if (depthWeight <= 0) return 0;
+
+  // 3. Bilateral Ear Rejection Zone:
+  // Ears anatomically sit at |u| > 0.52 and w < 0.58.
+  // If lateral span is wide while depth is behind the cheek line, attenuate influence to zero.
+  let earWeight = 1.0;
+  if (absU > 0.48 && w < 0.58) {
+    const lateralFactor = smoothstep(0.48, 0.70, absU);
+    const posteriorFactor = 1.0 - smoothstep(0.30, 0.58, w);
+    earWeight = Math.max(0, 1.0 - (lateralFactor * posteriorFactor));
+  }
+  if (earWeight <= 0) return 0;
+
+  // 4. Polar / Conical Angular Mask (Frontal Facial Arc):
+  // Polar angle from central mid-face anchor (u=0, w=0.22)
+  const relDepth = Math.max(0.01, w - 0.22);
+  const angleRad = Math.atan2(absU, relDepth); // 0 radians at nasal tip, PI/2 at cranial sides
+  // Max frontal facial angle ~ 58 degrees (1.01 rad). Outside 68 deg (1.18 rad) -> 0.
+  const angleWeight = 1.0 - smoothstep(0.92, 1.18, angleRad);
+
+  return neckWeight * depthWeight * earWeight * angleWeight;
+}
+
+/**
  * Definition of procedural deformation formulas for all 52 ARKit expressions.
  */
 const DEFORMATION_RULES = {
   // ── Brows (5) ──
   browDownLeft: (u, v, w, s) => {
-    if (u < -0.05 && u > -0.65 && v > 0.65 && v < 0.90 && w > 0.3) {
-      const g = Math.exp(-Math.pow((u + 0.35) / 0.18, 2) - Math.pow((v - 0.76) / 0.12, 2));
+    if (u < -0.05 && u > -0.58 && v > 0.65 && v < 0.90 && w > 0.35) {
+      const g = Math.exp(-Math.pow((u + 0.32) / 0.16, 2) - Math.pow((v - 0.76) / 0.12, 2));
       return [0.005 * g * s, -0.045 * g * s, 0.008 * g * s];
     }
     return null;
   },
   browDownRight: (u, v, w, s) => {
-    if (u > 0.05 && u < 0.65 && v > 0.65 && v < 0.90 && w > 0.3) {
-      const g = Math.exp(-Math.pow((u - 0.35) / 0.18, 2) - Math.pow((v - 0.76) / 0.12, 2));
+    if (u > 0.05 && u < 0.58 && v > 0.65 && v < 0.90 && w > 0.35) {
+      const g = Math.exp(-Math.pow((u - 0.32) / 0.16, 2) - Math.pow((v - 0.76) / 0.12, 2));
       return [-0.005 * g * s, -0.045 * g * s, 0.008 * g * s];
     }
     return null;
   },
   browInnerUp: (u, v, w, s) => {
-    if (Math.abs(u) < 0.35 && v > 0.68 && v < 0.92 && w > 0.35) {
-      const g = Math.exp(-Math.pow(u / 0.16, 2) - Math.pow((v - 0.78) / 0.14, 2));
+    if (Math.abs(u) < 0.32 && v > 0.68 && v < 0.92 && w > 0.35) {
+      const g = Math.exp(-Math.pow(u / 0.15, 2) - Math.pow((v - 0.78) / 0.14, 2));
       return [0, 0.055 * g * s, 0.012 * g * s];
     }
     return null;
   },
   browOuterUpLeft: (u, v, w, s) => {
-    if (u < -0.25 && u > -0.85 && v > 0.65 && v < 0.92 && w > 0.25) {
-      const g = Math.exp(-Math.pow((u + 0.52) / 0.18, 2) - Math.pow((v - 0.77) / 0.14, 2));
+    if (u < -0.20 && u > -0.62 && v > 0.65 && v < 0.92 && w > 0.35) {
+      const g = Math.exp(-Math.pow((u + 0.45) / 0.15, 2) - Math.pow((v - 0.77) / 0.14, 2));
       return [-0.005 * g * s, 0.050 * g * s, 0.008 * g * s];
     }
     return null;
   },
   browOuterUpRight: (u, v, w, s) => {
-    if (u > 0.25 && u < 0.85 && v > 0.65 && v < 0.92 && w > 0.25) {
-      const g = Math.exp(-Math.pow((u - 0.52) / 0.18, 2) - Math.pow((v - 0.77) / 0.14, 2));
+    if (u > 0.20 && u < 0.62 && v > 0.65 && v < 0.92 && w > 0.35) {
+      const g = Math.exp(-Math.pow((u - 0.45) / 0.15, 2) - Math.pow((v - 0.77) / 0.14, 2));
       return [0.005 * g * s, 0.050 * g * s, 0.008 * g * s];
     }
     return null;
@@ -162,40 +217,40 @@ const DEFORMATION_RULES = {
 
   // ── Jaw (4) ──
   jawOpen: (u, v, w, s) => {
-    if (Math.abs(u) < 0.40 && v > 0.10 && v < 0.45 && w > 0.45) {
-      const gu = Math.exp(-Math.pow(u / 0.24, 2));
-      const gv = Math.sin(((v - 0.10) / (0.45 - 0.10)) * Math.PI);
-      const gw = Math.max(0, (w - 0.45) / 0.55);
+    if (Math.abs(u) < 0.36 && v > 0.14 && v < 0.44 && w > 0.46) {
+      const gu = Math.exp(-Math.pow(u / 0.22, 2));
+      const gv = Math.sin(((v - 0.14) / (0.44 - 0.14)) * Math.PI);
+      const gw = Math.max(0, (w - 0.46) / 0.54);
       const weight = gu * gv * gw;
       return [0, -0.045 * weight * s, -0.010 * weight * s];
     }
     return null;
   },
   jawForward: (u, v, w, s) => {
-    if (Math.abs(u) < 0.38 && v > 0.12 && v < 0.42 && w > 0.45) {
-      const gu = Math.exp(-Math.pow(u / 0.24, 2));
-      const gv = Math.sin(((v - 0.12) / (0.42 - 0.12)) * Math.PI);
-      const gw = Math.max(0, (w - 0.45) / 0.55);
+    if (Math.abs(u) < 0.35 && v > 0.14 && v < 0.42 && w > 0.46) {
+      const gu = Math.exp(-Math.pow(u / 0.22, 2));
+      const gv = Math.sin(((v - 0.14) / (0.42 - 0.14)) * Math.PI);
+      const gw = Math.max(0, (w - 0.46) / 0.54);
       const weight = gu * gv * gw;
       return [0, 0, 0.025 * weight * s];
     }
     return null;
   },
   jawLeft: (u, v, w, s) => {
-    if (Math.abs(u) < 0.40 && v > 0.12 && v < 0.42 && w > 0.45) {
-      const gu = Math.exp(-Math.pow(u / 0.26, 2));
-      const gv = Math.sin(((v - 0.12) / (0.42 - 0.12)) * Math.PI);
-      const gw = Math.max(0, (w - 0.45) / 0.55);
+    if (Math.abs(u) < 0.36 && v > 0.14 && v < 0.42 && w > 0.46) {
+      const gu = Math.exp(-Math.pow(u / 0.24, 2));
+      const gv = Math.sin(((v - 0.14) / (0.42 - 0.14)) * Math.PI);
+      const gw = Math.max(0, (w - 0.46) / 0.54);
       const weight = gu * gv * gw;
       return [-0.025 * weight * s, 0, 0];
     }
     return null;
   },
   jawRight: (u, v, w, s) => {
-    if (Math.abs(u) < 0.40 && v > 0.12 && v < 0.42 && w > 0.45) {
-      const gu = Math.exp(-Math.pow(u / 0.26, 2));
-      const gv = Math.sin(((v - 0.12) / (0.42 - 0.12)) * Math.PI);
-      const gw = Math.max(0, (w - 0.45) / 0.55);
+    if (Math.abs(u) < 0.36 && v > 0.14 && v < 0.42 && w > 0.46) {
+      const gu = Math.exp(-Math.pow(u / 0.24, 2));
+      const gv = Math.sin(((v - 0.14) / (0.42 - 0.14)) * Math.PI);
+      const gw = Math.max(0, (w - 0.46) / 0.54);
       const weight = gu * gv * gw;
       return [0.025 * weight * s, 0, 0];
     }
@@ -385,23 +440,23 @@ const DEFORMATION_RULES = {
 
   // ── Cheeks & Nose (7) ──
   cheekPuff: (u, v, w, s) => {
-    if (Math.abs(u) > 0.15 && Math.abs(u) < 0.65 && v > 0.25 && v < 0.55 && w > 0.20) {
+    if (Math.abs(u) > 0.12 && Math.abs(u) < 0.52 && v > 0.26 && v < 0.52 && w > 0.35) {
       const sign = u >= 0 ? 1 : -1;
-      const g = Math.exp(-Math.pow((Math.abs(u) - 0.38) / 0.16, 2) - Math.pow((v - 0.40) / 0.12, 2));
+      const g = Math.exp(-Math.pow((Math.abs(u) - 0.32) / 0.14, 2) - Math.pow((v - 0.38) / 0.10, 2));
       return [sign * 0.055 * g * s, 0, 0.035 * g * s];
     }
     return null;
   },
   cheekSquintLeft: (u, v, w, s) => {
-    if (u < -0.12 && u > -0.55 && v > 0.38 && v < 0.62 && w > 0.30) {
-      const g = Math.exp(-Math.pow((u + 0.32) / 0.14, 2) - Math.pow((v - 0.50) / 0.10, 2));
+    if (u < -0.10 && u > -0.50 && v > 0.38 && v < 0.60 && w > 0.35) {
+      const g = Math.exp(-Math.pow((u + 0.30) / 0.13, 2) - Math.pow((v - 0.49) / 0.09, 2));
       return [-0.012 * g * s, 0.038 * g * s, 0.022 * g * s];
     }
     return null;
   },
   cheekSquintRight: (u, v, w, s) => {
-    if (u > 0.12 && u < 0.55 && v > 0.38 && v < 0.62 && w > 0.30) {
-      const g = Math.exp(-Math.pow((u - 0.32) / 0.14, 2) - Math.pow((v - 0.50) / 0.10, 2));
+    if (u > 0.10 && u < 0.50 && v > 0.38 && v < 0.60 && w > 0.35) {
+      const g = Math.exp(-Math.pow((u - 0.30) / 0.13, 2) - Math.pow((v - 0.49) / 0.09, 2));
       return [0.012 * g * s, 0.038 * g * s, 0.022 * g * s];
     }
     return null;
@@ -694,12 +749,16 @@ export function synthesizeARKitBlendshapes(mesh, options = {}) {
         ? (vz - head.headMinZ) / headDepth
         : (head.headMaxZ - vz) / headDepth;
 
+      // Anatomical facial isolation: strictly eliminates deformation bleeding into ears, neck and occiput
+      const mask = getFacialAnatomicalMask(u, v, w);
+      if (mask <= 0.0001) continue;
+
       const delta = rule(u, v, w, effectiveScale);
       if (delta) {
-        deltaBuffer[i * 3 + 0] = delta[0];
-        deltaBuffer[i * 3 + 1] = delta[1];
+        deltaBuffer[i * 3 + 0] = delta[0] * mask;
+        deltaBuffer[i * 3 + 1] = delta[1] * mask;
         // Flip Z delta if model faces negative Z
-        deltaBuffer[i * 3 + 2] = delta[2] * forwardSign;
+        deltaBuffer[i * 3 + 2] = delta[2] * forwardSign * mask;
         hasMovement = true;
       }
     }
