@@ -517,9 +517,8 @@ export class Renderer {
 
             // 2. Camadas Oclusoras dos Olhos / Conchas Corneais Transparentes (MetaHuman / Unreal)
             const isEyeShell = matName.includes('eyeshell') || matName.includes('eyeedge') ||
-                               matName.includes('saliva') || matName.includes('cartilage') ||
-                               matName.includes('m_hide') || matName.includes('lacrimal') ||
-                               matName.includes('fluid') || matName.includes('cornea_shell');
+                               matName.includes('lacrimal') || matName.includes('fluid') ||
+                               matName.includes('cornea_shell') || matName.includes('m_hide');
             if (isEyeShell) {
               m.transparent = true;
               m.opacity = 0.0;
@@ -574,8 +573,9 @@ export class Renderer {
                 m.map = null;
                 m.color = new THREE.Color(0x1a120c);
               } else if (m.map) {
+                // Textura baked com canal alfa transparente: utiliza m.map diretamente sem alphaMap para preservar fios castanhos
                 calibrateTexture(m.map, true);
-                m.alphaMap = m.map;
+                m.alphaMap = null;
                 m.color = new THREE.Color(0xffffff);
               } else {
                 const proc = this._createProceduralEyebrowTextures();
@@ -589,7 +589,7 @@ export class Renderer {
               m.sheen = 0.45;
               m.sheenColor = new THREE.Color(0x3e2314);
               m.transparent = true;
-              m.alphaTest = 0.05;
+              m.alphaTest = 0.03;
               m.alphaToCoverage = true;
               m.depthWrite = true;
               m.depthTest = true;
@@ -616,8 +616,9 @@ export class Renderer {
                 m.map = null;
                 m.color = new THREE.Color(0x16100b); // Cabelo preto espresso natural
               } else if (m.map) {
+                // Textura baked com canal alfa transparente: utiliza m.map diretamente sem alphaMap
                 calibrateTexture(m.map, true);
-                m.alphaMap = m.map;
+                m.alphaMap = null;
                 m.color = new THREE.Color(0xffffff);
               } else {
                 const proc = this._createProceduralHairStrands();
@@ -634,7 +635,7 @@ export class Renderer {
               m.sheenColor = new THREE.Color(0x52321c);
               m.sheenRoughness = 0.30;
               m.transparent = true;
-              m.alphaTest = 0.05;
+              m.alphaTest = 0.03;
               m.alphaToCoverage = true;
               m.depthWrite = true;
               m.depthTest = true;
@@ -644,7 +645,7 @@ export class Renderer {
               return m;
             }
 
-            // 6. Olhos / Globo Ocular / Íris / Esclera (T_Iris_A_M com KHR_texture_transform)
+            // 6. Olhos / Globo Ocular / Íris / Esclera (Única Íris Centralizada)
             const isEye = matName.includes('eyeleft') || matName.includes('eyeright') ||
                           matName.includes('eyeball') || matName.includes('eyel_baked') ||
                           matName.includes('eyer_baked') || matName.includes('eye') ||
@@ -652,6 +653,13 @@ export class Renderer {
             if (isEye && !isEyeShell) {
               if (m.map) {
                 calibrateTexture(m.map, true);
+                // ClampToEdgeWrapping com repetição 1x1 e offset 0x0 centraliza exatamente 1 íris na pupila
+                m.map.wrapS = THREE.ClampToEdgeWrapping;
+                m.map.wrapT = THREE.ClampToEdgeWrapping;
+                m.map.repeat.set(1, 1);
+                m.map.offset.set(0, 0);
+                m.map.matrixAutoUpdate = true;
+                m.map.needsUpdate = true;
               }
               m.roughness = 0.10;
               m.metalness = 0.0;
@@ -662,6 +670,43 @@ export class Renderer {
               m.side = THREE.DoubleSide;
               if (m.color) m.color.setHex(0xffffff);
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.2;
+              m.needsUpdate = true;
+              return m;
+            }
+
+            // 7. Língua e Cavidade Oral / Mucosa / Cartilagem / Saliva
+            const isOralCavity = matName.includes('cartilage') || matName.includes('tongue') ||
+                                 matName.includes('oral') || matName.includes('saliva') ||
+                                 matName.includes('mouth');
+            if (isOralCavity) {
+              m.roughness = 0.35;
+              m.metalness = 0.0;
+              m.depthWrite = true;
+              m.depthTest = true;
+              m.side = THREE.DoubleSide;
+              m.visible = true;
+              m.transparent = false;
+              m.opacity = 1.0;
+              if (!m.map) {
+                m.color = new THREE.Color(0x9a3030); // Tom vermelho-rosado mucosal natural
+              }
+              m.needsUpdate = true;
+              return m;
+            }
+
+            // 8. Dentes
+            const isTeeth = matName.includes('teeth');
+            if (isTeeth) {
+              m.roughness = 0.25;
+              m.metalness = 0.0;
+              m.depthWrite = true;
+              m.depthTest = true;
+              m.side = THREE.DoubleSide;
+              m.visible = true;
+              m.transparent = false;
+              if (!m.map) {
+                m.color = new THREE.Color(0xdad3c5); // Esmalte dental marfim
+              }
               m.needsUpdate = true;
               return m;
             }
@@ -695,7 +740,7 @@ export class Renderer {
                 m.transparent = true;
                 m.alphaToCoverage = true;
                 if (m.alphaTest <= 0) {
-                  m.alphaTest = 0.05;
+                  m.alphaTest = 0.03;
                 }
                 m.needsUpdate = true;
               } else {
@@ -790,7 +835,7 @@ export class Renderer {
                 roughness: roughnessMap ? 1.0 : convertedRoughness,
                 metalness: metallicMap ? 1.0 : convertedMetalness,
                 transparent: hasAlpha,
-                alphaTest: hasAlpha ? 0.05 : 0,
+                alphaTest: hasAlpha ? 0.03 : 0,
                 alphaToCoverage: hasAlpha,
                 depthWrite: true,
                 depthTest: true,
@@ -801,11 +846,11 @@ export class Renderer {
             }
 
             // =========================================================================
-            // CASO 3: Demais Materiais do MetaHuman (Pele, Roupas, Dentes)
+            // CASO 3: Demais Materiais do MetaHuman (Pele, Roupas)
             // =========================================================================
             m.side = THREE.DoubleSide;
 
-            // 7. Pele / Cabeça / Corpo do MetaHuman
+            // 9. Pele / Cabeça / Corpo do MetaHuman
             if (matName.includes('head_shader') || matName.includes('body_mi') || matName.includes('skin') || matName.includes('face') || matName.includes('head') || nodeName === 'head') {
               m.roughness = m.roughnessMap ? 1.0 : 0.58;
               m.metalness = 0.0;
@@ -818,7 +863,7 @@ export class Renderer {
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
               return m;
             }
-            // 8. Roupas do MetaHuman
+            // 10. Roupas do MetaHuman
             else if (matName.includes('top_') || matName.includes('btm_') || matName.includes('slacks') || matName.includes('shirt') || matName.includes('cloth') || matName.includes('outfit') || matName.includes('coat') || matName.includes('trouser') || matName.includes('shoe')) {
               m.roughness = m.roughnessMap ? 1.0 : 0.80;
               m.metalness = m.metalnessMap ? 1.0 : 0.0;
@@ -828,14 +873,6 @@ export class Renderer {
               m.side = THREE.DoubleSide;
               if (m.color) m.color.setHex(0xffffff);
               if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.3;
-              return m;
-            }
-            // 9. Dentes e Boca
-            else if (matName.includes('teeth')) {
-              m.roughness = 0.28;
-              m.metalness = 0.0;
-              m.depthWrite = true;
-              m.side = THREE.DoubleSide;
               return m;
             }
 
@@ -1832,17 +1869,17 @@ export class Renderer {
         `#include <common>
         // High-precision strand generator & tip tapering for hair / lash groom cards
         float getProceduralStrandMask(vec2 uv, bool isLash) {
-          float strandRepeat = isLash ? 8.0 : 4.0;
+          float strandRepeat = isLash ? 16.0 : 4.0;
           float strandU = fract(uv.x * strandRepeat);
           float strandDist = abs(strandU - 0.5) * 2.0;
 
           // Tip tapering: narrow towards card tip (along V coordinate)
-          float tipFactor = clamp(1.0 - uv.y * 0.82, 0.08, 1.0);
-          float fiberAlpha = smoothstep(tipFactor, tipFactor * 0.28, strandDist);
+          float tipFactor = clamp(1.0 - uv.y * 1.35, 0.05, 1.0);
+          float fiberAlpha = smoothstep(tipFactor, tipFactor * 0.22, strandDist);
 
-          // Root-to-tip subtle opacity gradient
-          float rootTipGradient = smoothstep(0.99, 0.75, uv.y);
-          return clamp(fiberAlpha * rootTipGradient, 0.0, 1.0);
+          // Eyelash length trim & root-to-tip subtle opacity gradient
+          float lengthCutoff = isLash ? smoothstep(0.55, 0.18, uv.y) : smoothstep(0.99, 0.75, uv.y);
+          return clamp(fiberAlpha * lengthCutoff, 0.0, 1.0);
         }
         `
       );
@@ -1856,7 +1893,8 @@ export class Renderer {
             if (diffuseColor.a > 0.90) {
               diffuseColor.a = getProceduralStrandMask(vUv, ${isEyelash ? 'true' : 'false'});
             } else {
-              // Enhance existing alpha map with subtle tip tapering
+              // Enhance existing alpha map with subtle tip tapering and delicate length trim for lashes
+              ${isEyelash ? 'diffuseColor.a *= smoothstep(0.58, 0.18, vUv.y);' : ''}
               diffuseColor.a *= clamp(1.0 - abs(vUv.x - 0.5) * 0.3, 0.6, 1.0);
             }
           #else
@@ -2068,20 +2106,20 @@ export class Renderer {
 
     for (let i = 0; i < numStrands; i++) {
       const xBase = i * spacing + spacing * 0.5 + (Math.sin(i * 3.7) * (spacing * 0.25));
-      const strandLen = height * (0.75 + Math.sin(i * 2.1) * 0.20);
-      const curlCurve = (Math.sin(i * 1.3) * 28) + (i % 2 === 0 ? 10 : -10);
-      const rootWidth = 4.2 + Math.sin(i * 5.1) * 1.2;
+      const strandLen = height * (0.42 + Math.sin(i * 2.1) * 0.12);
+      const curlCurve = (Math.sin(i * 1.3) * 16) + (i % 2 === 0 ? 6 : -6);
+      const rootWidth = 2.4 + Math.sin(i * 5.1) * 0.6;
 
       // Root to tip quadratic curve
       aCtx.beginPath();
       aCtx.moveTo(xBase - rootWidth * 0.5, height);
       aCtx.lineTo(xBase + rootWidth * 0.5, height);
       aCtx.quadraticCurveTo(
-        xBase + curlCurve * 0.5 + 1.5, height - strandLen * 0.5,
+        xBase + curlCurve * 0.5 + 0.8, height - strandLen * 0.5,
         xBase + curlCurve, height - strandLen
       );
       aCtx.quadraticCurveTo(
-        xBase + curlCurve * 0.5 - 1.5, height - strandLen * 0.5,
+        xBase + curlCurve * 0.5 - 0.8, height - strandLen * 0.5,
         xBase - rootWidth * 0.5, height
       );
       aCtx.closePath();
