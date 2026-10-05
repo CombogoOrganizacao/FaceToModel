@@ -48,9 +48,12 @@ const CAMERA_Z = 2.4;
  * @param {boolean} isColorMap
  * @returns {THREE.Texture|null}
  */
-function calibrateTexture(tex, isColorMap = false) {
+function calibrateTexture(tex, isColorMap = false, flipY = undefined) {
   if (!tex || !tex.isTexture) return tex;
   tex.colorSpace = isColorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  if (flipY !== undefined) {
+    tex.flipY = Boolean(flipY);
+  }
   if (!tex.isCompressedTexture && !tex.isDataTexture && !tex.isDepthTexture && !tex.isVideoTexture && !tex.isRenderTargetTexture) {
     tex.generateMipmaps = true;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -278,13 +281,13 @@ export class Renderer {
     if (lowerName.endsWith('.mhpkg')) {
       // Package MetaHuman Creator (.mhpkg / Unreal Engine)
       const cleanBase = (filename || url).split('/').pop().replace(/\.mhpkg$/i, '').toLowerCase();
-      let targetGlb = '/models/metahuman.glb?v=20261004_v4';
+      let targetGlb = '/models/metahuman.glb?v=20261005_v5';
       let charName = 'MetaHuman';
       if (cleanBase.includes('advika')) {
-        targetGlb = '/models/mhc_advika.glb?v=20261004_v4';
+        targetGlb = '/models/mhc_advika.glb?v=20261005_v5';
         charName = 'MetaHuman_Advika';
       } else if (cleanBase.includes('skotukeda')) {
-        targetGlb = '/models/skotukeda5.glb?v=20261004_v4';
+        targetGlb = '/models/skotukeda5.glb?v=20261005_v5';
         charName = 'MetaHuman_Skotukeda5';
       }
       const buffer = await modelCache.fetchWithCache(targetGlb, onProgress);
@@ -322,60 +325,72 @@ export class Renderer {
         model = await objLoader.loadAsync(url);
       }
 
-      // Auto-bind de Texturas: para cada malha do modelo .obj sem textura, vincular inteligentemente imagens do assetMap
+      // Auto-bind / Normalização de Materiais PBR do OBJ:
       const imageKeys = Object.keys(assetMap).filter((k) => /\.(png|jpe?g|webp|bmp)$/i.test(k));
-      if (imageKeys.length > 0) {
-        console.log('[Renderer] Auto-bind inteligente: associando texturas do assetMap às malhas do modelo');
-        const texLoader = new THREE.TextureLoader();
-        const loadedTextures = new Map();
+      const texLoader = new THREE.TextureLoader();
+      const loadedTextures = new Map();
 
-        const getTexture = (fileKey, isColor = false) => {
-          if (!fileKey || !assetMap[fileKey]) return null;
-          const texUrl = assetMap[fileKey];
-          if (!loadedTextures.has(texUrl)) {
-            const tex = texLoader.load(texUrl);
-            calibrateTexture(tex, isColor);
-            loadedTextures.set(texUrl, tex);
-          }
-          return loadedTextures.get(texUrl);
-        };
+      const getTexture = (fileKey, isColor = false) => {
+        if (!fileKey || !assetMap[fileKey]) return null;
+        const texUrl = assetMap[fileKey];
+        if (!loadedTextures.has(texUrl)) {
+          const tex = texLoader.load(texUrl);
+          // Standard OBJ UV coordinates require flipY = true
+          calibrateTexture(tex, isColor, true);
+          loadedTextures.set(texUrl, tex);
+        }
+        return loadedTextures.get(texUrl);
+      };
 
-        // Find general fallback textures
-        const fallbackAlbedo = imageKeys.find((k) => /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(k)) ||
-                              (imageKeys.length === 1 ? imageKeys[0] : null);
-        const fallbackNormal = imageKeys.find((k) => /(normal|norm|nrm)/i.test(k));
-        const fallbackRoughness = imageKeys.find((k) => /(roughness|rough)/i.test(k));
-        const fallbackMetallic = imageKeys.find((k) => /(metallic|metalness|metal)/i.test(k));
-        const fallbackAlpha = imageKeys.find((k) => /(opacity|alpha|mask)/i.test(k));
+      const singleFallbackAlbedo = imageKeys.length === 1 ? imageKeys[0] : null;
+      const createdMaterials = new Map();
 
-        const createdMaterials = new Map();
+      model.traverse((node) => {
+        if (node.isMesh) {
+          const meshName = (node.name || '').toLowerCase();
+          const origMats = Array.isArray(node.material) ? node.material : (node.material ? [node.material] : []);
 
-        model.traverse((node) => {
-          if (node.isMesh) {
-            const meshName = (node.name || '').toLowerCase();
-            const matName = (node.material && node.material.name ? node.material.name : '').toLowerCase();
+          const newMats = origMats.map((origMat) => {
+            const matName = (origMat?.name || '').toLowerCase();
+            const searchKey = `${meshName} ${matName}`;
+            const isHairOrLash = /(hair|eyebrow|brow|lash|cilio|sobrancelha|fur|pelo|feather|fringe|card|trim|foliage|leaf|plant)/i.test(searchKey);
 
-            // Se o nó já tem textura válida aplicada via MTL, não sobrescreve a menos que falte o mapa difuso
-            const currentMats = Array.isArray(node.material) ? node.material : [node.material];
-            const hasExistingMap = currentMats.some((m) => Boolean(m.map));
-            if (hasExistingMap) return;
+            // 1. Se o material já veio do MTL com mapa de textura válido
+            if (origMat && origMat.map) {
+              calibrateTexture(origMat.map, true, true);
+              const isCutout = isHairOrLash || Boolean(origMat.alphaMap);
 
-            // Try to find textures matching this specific mesh or material name
-            const searchKey = meshName || matName;
+              return new THREE.MeshStandardMaterial({
+                name: origMat.name || meshName || 'MTL_PBR',
+                map: origMat.map,
+                normalMap: origMat.normalMap ? calibrateTexture(origMat.normalMap, false, true) : (origMat.bumpMap ? calibrateTexture(origMat.bumpMap, false, true) : null),
+                roughness: 0.65,
+                metalness: 0.05,
+                alphaMap: origMat.alphaMap ? calibrateTexture(origMat.alphaMap, false, true) : null,
+                transparent: isCutout,
+                alphaTest: isCutout ? 0.05 : 0.0,
+                alphaToCoverage: isCutout,
+                depthWrite: true,
+                depthTest: true,
+                side: THREE.DoubleSide,
+              });
+            }
+
+            // 2. Se não tem textura MTL, vincular do assetMap por correspondência de tokens
             let albedoKey = null;
             let normalKey = null;
             let roughnessKey = null;
             let metallicKey = null;
             let alphaKey = null;
 
-            if (searchKey) {
+            if (imageKeys.length > 0) {
               const tokens = searchKey.split(/[^a-z0-9]/).filter((t) => t.length >= 3);
               for (const token of tokens) {
                 if (!albedoKey) {
                   albedoKey = imageKeys.find((k) => {
                     const lk = k.toLowerCase();
                     return lk.includes(token) && /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(lk);
-                  }) || imageKeys.find((k) => k.toLowerCase().includes(token));
+                  }) || imageKeys.find((k) => k.toLowerCase().includes(token) && !/(normal|norm|nrm|rough|metal|opacity|alpha|mask|spec)/i.test(k));
                 }
                 if (!normalKey) {
                   normalKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(normal|norm|nrm)/i.test(k));
@@ -386,43 +401,40 @@ export class Renderer {
                 if (!metallicKey) {
                   metallicKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(metallic|metalness|metal)/i.test(k));
                 }
-                if (!alphaKey) {
-                  alphaKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(opacity|alpha|mask)/i.test(k));
+                if (!alphaKey && isHairOrLash) {
+                  alphaKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(opacity|alpha|mask|cutout)/i.test(k));
                 }
+              }
+
+              // Fallback difuso apenas se existir exatamente 1 imagem no diretório
+              if (!albedoKey && singleFallbackAlbedo) {
+                albedoKey = singleFallbackAlbedo;
               }
             }
 
-            // Fallbacks if not matched per-part
-            albedoKey = albedoKey || fallbackAlbedo;
-            normalKey = normalKey || fallbackNormal;
-            roughnessKey = roughnessKey || fallbackRoughness;
-            metallicKey = metallicKey || fallbackMetallic;
-            alphaKey = alphaKey || fallbackAlpha;
-
-            const matKey = `${albedoKey || ''}|${normalKey || ''}|${roughnessKey || ''}|${metallicKey || ''}|${alphaKey || ''}`;
-
+            const matKey = `${albedoKey || ''}|${normalKey || ''}|${roughnessKey || ''}|${metallicKey || ''}|${alphaKey || ''}|${matName}`;
             if (!createdMaterials.has(matKey)) {
               const albedoTex = albedoKey ? getTexture(albedoKey, true) : null;
               const normalTex = normalKey ? getTexture(normalKey, false) : null;
               const roughnessTex = roughnessKey ? getTexture(roughnessKey, false) : null;
               const metallicTex = metallicKey ? getTexture(metallicKey, false) : null;
-              const alphaTex = alphaKey ? getTexture(alphaKey, false) : null;
+              const alphaTex = (alphaKey && isHairOrLash) ? getTexture(alphaKey, false) : null;
 
-              const isCutout = Boolean(alphaTex);
+              const isCutout = Boolean(alphaTex) && isHairOrLash;
 
               const pbrMat = new THREE.MeshStandardMaterial({
-                name: matName || meshName || 'AutoPBR',
+                name: origMat?.name || matName || meshName || 'AutoPBR',
                 map: albedoTex,
                 normalMap: normalTex,
                 roughnessMap: roughnessTex,
                 metalnessMap: metallicTex,
                 alphaMap: alphaTex,
                 transparent: isCutout,
-                alphaTest: isCutout ? 0.05 : 0,
+                alphaTest: isCutout ? 0.05 : 0.0,
                 alphaToCoverage: isCutout,
                 depthWrite: true,
                 depthTest: true,
-                roughness: roughnessTex ? 1.0 : 0.6,
+                roughness: roughnessTex ? 1.0 : 0.65,
                 metalness: metallicTex ? 1.0 : 0.05,
                 side: THREE.DoubleSide,
               });
@@ -430,10 +442,12 @@ export class Renderer {
               createdMaterials.set(matKey, pbrMat);
             }
 
-            node.material = createdMaterials.get(matKey);
-          }
-        });
-      }
+            return createdMaterials.get(matKey);
+          });
+
+          node.material = Array.isArray(node.material) ? newMats : (newMats[0] || node.material);
+        }
+      });
     } else {
       // Standard GLTF / GLB loader with KTX2, DRACO and IndexedDB Binary Cache
       this._loader.manager = loadingManager;

@@ -7,9 +7,24 @@
  * @module model-cache
  */
 
-const DB_NAME = 'FaceToModel_Cache_v1';
+const DB_NAME = 'FaceToModel_Cache_v3';
 const STORE_NAME = 'models';
 const DB_VERSION = 1;
+
+/**
+ * Checks if a buffer is a raw Git LFS text pointer rather than an actual binary asset.
+ * @param {ArrayBuffer} buffer
+ * @returns {boolean}
+ */
+function isLfsPointer(buffer) {
+  if (!buffer || buffer.byteLength > 2048) return false;
+  try {
+    const text = new TextDecoder('utf-8').decode(new Uint8Array(buffer));
+    return text.trimStart().startsWith('version https://');
+  } catch (_) {
+    return false;
+  }
+}
 
 class ModelCache {
   constructor() {
@@ -45,10 +60,18 @@ class ModelCache {
 
     return new Promise((resolve) => {
       try {
-        const tx = db.transaction(STORE_NAME, 'readonly');
+        const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
         const req = store.get(key);
-        req.onsuccess = () => resolve(req.result || null);
+        req.onsuccess = () => {
+          const res = req.result;
+          if (res && isLfsPointer(res)) {
+            store.delete(key);
+            resolve(null);
+          } else {
+            resolve(res || null);
+          }
+        };
         req.onerror = () => resolve(null);
       } catch (_) {
         resolve(null);
@@ -64,7 +87,7 @@ class ModelCache {
    */
   async set(key, buffer) {
     const db = await this._dbPromise;
-    if (!db || !buffer) return;
+    if (!db || !buffer || isLfsPointer(buffer)) return;
 
     return new Promise((resolve) => {
       try {
