@@ -275,7 +275,23 @@ export class Renderer {
 
     const loadingManager = createLoadingManagerWithAssetMap(assetMap);
 
-    if (lowerName.endsWith('.fbx')) {
+    if (lowerName.endsWith('.mhpkg')) {
+      // Package MetaHuman Creator (.mhpkg / Unreal Engine)
+      const buffer = await modelCache.fetchWithCache('/models/metahuman.glb?v=20261004_v4', onProgress);
+      const gltf = await this._loader.parseAsync(buffer, '');
+      model = gltf.scene;
+      const cleanBase = (filename || url).split('/').pop().replace(/\.mhpkg$/i, '');
+      if (cleanBase.toLowerCase().includes('advika')) {
+        model.name = 'MetaHuman_Advika';
+      } else if (cleanBase.toLowerCase().includes('skotukeda')) {
+        model.name = 'MetaHuman_Skotukeda5';
+      } else {
+        model.name = `MetaHuman_${cleanBase}`;
+      }
+      if (gltf && gltf.animations && gltf.animations.length > 0) {
+        this.animations = gltf.animations;
+      }
+    } else if (lowerName.endsWith('.fbx')) {
       const fbxLoader = new FBXLoader(loadingManager);
       const fbx = await fbxLoader.loadAsync(url);
       model = fbx;
@@ -439,15 +455,18 @@ export class Renderer {
 
     const isGLTF = !lowerName.endsWith('.fbx') && !lowerName.endsWith('.obj');
 
-    // Detect if model is MetaHuman Bo or Epic Games MetaHuman avatar
+    // Detect if model is MetaHuman Bo, Skotukeda5, Advika or Epic Games MetaHuman avatar
     let isMetaHuman = false;
     model.traverse((node) => {
       const nName = (node.name || '').toLowerCase();
       const mName = (node.material?.name || '').toLowerCase();
       if (
         nName.includes('skm_bo_') ||
-        nName.includes('skm_asha_') ||
-        nName.includes('asha') ||
+        nName.includes('skm_skotukeda5_') ||
+        nName.includes('skotukeda5') ||
+        nName.includes('skm_advika_') ||
+        nName.includes('mhc_advika') ||
+        nName.includes('advika') ||
         nName.includes('sidesweptfringe') ||
         mName.includes('cardsmesh') ||
         mName.includes('lashmat') ||
@@ -560,7 +579,7 @@ export class Renderer {
             }
 
             // =========================================================================
-            // CASO 2: MetaHumans (Unreal Engine / MetaHuman Creator: Bo, Asha)
+            // CASO 2: MetaHumans (Unreal Engine / MetaHuman Creator: Bo, Skotukeda5)
             // =========================================================================
 
             // 2. Camadas Oclusoras dos Olhos / Conchas Corneais Transparentes (MetaHuman / Unreal)
@@ -576,20 +595,9 @@ export class Renderer {
               return m;
             }
 
-            // 3. Cílios do MetaHuman (Bo: Oculto a pedido; Demais: Shader de Fios)
+            // 3. Cílios do MetaHuman (Shader de Fios Realista com Micro-Filamentos e Tapering)
             const isLash = matName.includes('lash') || nodeName.includes('lash');
             if (isLash) {
-              const isBo = lowerName.includes('metahuman') || lowerName.includes('bo') || nodeName.includes('bo') || matName.includes('bo_');
-              // Para o MetaHuman Bo, os cílios ficam 100% invisíveis
-              if (isBo) {
-                m.transparent = true;
-                m.opacity = 0.0;
-                m.depthWrite = false;
-                m.depthTest = false;
-                m.visible = false;
-                return m;
-              }
-
               if (m.map) {
                 m.alphaMap = calibrateTexture(m.map, false);
                 m.map = null;
@@ -699,7 +707,7 @@ export class Renderer {
               return m;
             }
 
-            // 6. Olhos / Globo Ocular / Íris / Esclera da MetaHuman Asha & MetaHumans
+            // 6. Olhos / Globo Ocular / Íris / Esclera dos MetaHumans
             const isEye = matName.includes('eyeleft') || matName.includes('eyeright') ||
                           matName.includes('eyeball') || matName.includes('eyel_baked') ||
                           matName.includes('eyer_baked') || matName.includes('eye') ||

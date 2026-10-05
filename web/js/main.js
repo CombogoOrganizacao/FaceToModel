@@ -922,10 +922,14 @@ async function extractFilesFromDataTransfer(dataTransfer) {
  * @param {File[]} files
  */
 async function handleUploadedFiles(files) {
-  // Se foi enviado um arquivo .zip (ex: baixado direto do Sketchfab), descompacta automaticamente
-  const zipFile = files.find((f) => f.name.toLowerCase().endsWith(".zip"));
+  // Se foi enviado um arquivo .zip ou .mhpkg, descompacta automaticamente
+  const zipFile = files.find((f) => {
+    const n = f.name.toLowerCase();
+    return n.endsWith(".zip") || n.endsWith(".mhpkg");
+  });
   if (zipFile && window.JSZip) {
-    showToast("Descompactando arquivo ZIP do Sketchfab...", "info");
+    const isMhpkg = zipFile.name.toLowerCase().endsWith(".mhpkg");
+    showToast(isMhpkg ? "Descompactando pacote MetaHuman (.mhpkg)..." : "Descompactando arquivo ZIP...", "info");
     try {
       const zip = await window.JSZip.loadAsync(zipFile);
       const extractedFiles = [];
@@ -943,20 +947,32 @@ async function handleUploadedFiles(files) {
         return handleUploadedFiles(extractedFiles);
       }
     } catch (zipErr) {
-      console.warn("[main] Erro ao descompactar ZIP:", zipErr);
-      showToast("Erro ao abrir arquivo ZIP: " + zipErr.message, "error");
+      console.warn("[main] Erro ao descompactar pacote:", zipErr);
+      showToast("Erro ao abrir pacote ZIP/MHPKG: " + zipErr.message, "error");
       return;
     }
   }
 
   // Find primary model file (.glb, .gltf, .fbx, .obj)
-  const modelFile = files.find((f) => {
+  let modelFile = files.find((f) => {
     const n = f.name.toLowerCase();
     return n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".fbx") || n.endsWith(".obj");
   });
 
+  // Se for um pacote MetaHuman .uasset / Manifest.json (.mhpkg), inicializa o avatar MetaHuman
   if (!modelFile) {
-    showToast("Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj) encontrado.", "error");
+    const uassetFile = files.find((f) => f.name.toLowerCase().endsWith(".uasset"));
+    const manifestFile = files.find((f) => f.name.toLowerCase().includes("manifest.json") || f.name.toLowerCase().endsWith(".uasset"));
+    if (manifestFile) {
+      let mhName = 'MetaHuman Avatar';
+      if (uassetFile) {
+        const rawName = uassetFile.name.replace(/\.uasset$/i, '').replace(/^mhc_/i, '');
+        mhName = `MetaHuman ${rawName.charAt(0).toUpperCase() + rawName.slice(1)}`;
+      }
+      showToast(`Pacote ${mhName} carregado! Inicializando avatar 3D...`, "info");
+      return loadModel('/models/metahuman.glb', mhName);
+    }
+    showToast("Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj, .mhpkg) encontrado.", "error");
     return;
   }
 
