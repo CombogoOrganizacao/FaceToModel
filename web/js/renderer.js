@@ -461,7 +461,23 @@ export class Renderer {
         model = gltf.scene;
       } else {
         // Stream / load from IndexedDB cache with progress
-        const buffer = await modelCache.fetchWithCache(url, onProgress);
+        let buffer = await modelCache.fetchWithCache(url, onProgress);
+        
+        // Guard against any stale LFS text pointer stored in browser cache
+        if (buffer && buffer.byteLength < 4096) {
+          try {
+            const headStr = new TextDecoder('utf-8').decode(new Uint8Array(buffer, 0, Math.min(256, buffer.byteLength)));
+            if (headStr.includes('version https://') || headStr.includes('git-lfs')) {
+              console.warn('[Renderer] Stale Git LFS text pointer detected in cache. Purging and refetching direct binary asset...');
+              await modelCache.delete(url);
+              const cleanUrl = `${url.split('?')[0]}?t=${Date.now()}`;
+              const res = await fetch(cleanUrl);
+              buffer = await res.arrayBuffer();
+              await modelCache.set(url, buffer);
+            }
+          } catch (_) {}
+        }
+
         gltf = await this._loader.parseAsync(buffer, '');
         model = gltf.scene;
       }

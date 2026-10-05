@@ -7,7 +7,15 @@
  * @module model-cache
  */
 
-const DB_NAME = 'FaceToModel_Cache_v3';
+// Purge legacy cache versions that may contain old Git LFS text pointers
+if (typeof indexedDB !== 'undefined') {
+  try {
+    indexedDB.deleteDatabase('FaceToModel_Cache_v1');
+    indexedDB.deleteDatabase('FaceToModel_Cache_v2');
+  } catch (_) {}
+}
+
+const DB_NAME = 'FaceToModel_Cache_v4';
 const STORE_NAME = 'models';
 const DB_VERSION = 1;
 
@@ -80,6 +88,28 @@ class ModelCache {
   }
 
   /**
+   * Deletes a cached model entry.
+   * @param {string} key
+   * @returns {Promise<void>}
+   */
+  async delete(key) {
+    const db = await this._dbPromise;
+    if (!db) return;
+
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch (_) {
+        resolve();
+      }
+    });
+  }
+
+  /**
    * Stores an ArrayBuffer in IndexedDB by key/URL.
    * @param {string} key
    * @param {ArrayBuffer} buffer
@@ -135,6 +165,11 @@ class ModelCache {
         if (xhr.status >= 200 && xhr.status < 300) {
           const buffer = xhr.response;
           if (buffer) {
+            if (isLfsPointer(buffer)) {
+              console.error(`[ModelCache] Received Git LFS text pointer for: ${url}`);
+              reject(new Error(`O servidor retornou um ponteiro de texto Git LFS. Atualize a página com cache limpo.`));
+              return;
+            }
             // Save to local cache in background
             this.set(url, buffer).catch(() => {});
             if (onProgress) onProgress({ loaded: buffer.byteLength, total: buffer.byteLength, percent: 100 });
