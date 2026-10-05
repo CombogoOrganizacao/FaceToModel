@@ -50,8 +50,10 @@ const CAMERA_Z = 2.4;
 function calibrateTexture(tex, isColorMap = false) {
   if (!tex || !tex.isTexture) return tex;
   tex.colorSpace = isColorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  tex.generateMipmaps = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  if (!tex.isCompressedTexture && !tex.isDataTexture && !tex.isDepthTexture && !tex.isVideoTexture && !tex.isRenderTargetTexture) {
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+  }
   tex.magFilter = THREE.LinearFilter;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
@@ -247,19 +249,22 @@ export class Renderer {
    * @returns {Promise<THREE.Object3D>}
    */
   async loadModel(url, filename = '', assetMap = {}, onProgress = null) {
-    if (this._model) {
-      this._scene.remove(this._model);
-      this._model = null;
-      this._modelMap = {};
-      this.blendshapeCoverage = 0;
-    }
-
-    // Reset animation state
+    // Reset animation state and mixer before removing the model
     this.animations = [];
     if (this._mixer) {
       this._mixer.stopAllAction();
-      this._mixer.uncacheRoot(this._model);
+      if (this._model) {
+        this._mixer.uncacheRoot(this._model);
+      }
       this._mixer = null;
+    }
+
+    if (this._model) {
+      this._scene.remove(this._model);
+      this._model = null;
+      this._innerModel = null;
+      this._modelMap = {};
+      this.blendshapeCoverage = 0;
     }
 
     const lowerName = (filename || url).toLowerCase();
@@ -2289,7 +2294,9 @@ export class Renderer {
     }
 
     tempMixer.stopAllAction();
-    tempMixer.uncacheRoot(this._innerModel);
+    if (this._innerModel) {
+      tempMixer.uncacheRoot(this._innerModel);
+    }
 
     return {
       name: clip.name || 'Animation',
