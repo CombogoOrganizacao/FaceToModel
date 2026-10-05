@@ -43,7 +43,7 @@ export function findFaceMesh(model) {
   let maxFallbackVerts = 0;
 
   // Words that strongly identify a face mesh
-  const faceRegex = /(face|head|cabeça|rosto|head_mesh|facemesh|head_geo|skm_bo_facemesh|skm_skotukeda5_facemesh|skm_advika_facemesh|character_head)/i;
+  const faceRegex = /(face|head|cabeça|rosto|head_mesh|facemesh|head_geo|character_head)/i;
   // Words that strictly exclude a mesh from being the face
   const excludeRegex = /(body|corpo|torso|legs|pants|shirt|jacket|shoes|hair|eye|eyebrow|teeth|tongue|lash|occlusion|cloth|bottom|top|arm|braço|hand|mão|eyeshell|eyeedge|lacrimal|saliva|cartilage)/i;
 
