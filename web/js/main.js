@@ -959,18 +959,27 @@ async function handleUploadedFiles(files) {
     return n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".fbx") || n.endsWith(".obj");
   });
 
-  // Se for um pacote MetaHuman .uasset / Manifest.json (.mhpkg), inicializa o avatar MetaHuman
+  // Se for um pacote MetaHuman .uasset / Manifest.json (.mhpkg), inicializa o avatar MetaHuman específico
   if (!modelFile) {
     const uassetFile = files.find((f) => f.name.toLowerCase().endsWith(".uasset"));
     const manifestFile = files.find((f) => f.name.toLowerCase().includes("manifest.json") || f.name.toLowerCase().endsWith(".uasset"));
     if (manifestFile) {
       let mhName = 'MetaHuman Avatar';
+      let targetGlb = '/models/metahuman.glb?v=20261004_v4';
       if (uassetFile) {
-        const rawName = uassetFile.name.replace(/\.uasset$/i, '').replace(/^mhc_/i, '');
-        mhName = `MetaHuman ${rawName.charAt(0).toUpperCase() + rawName.slice(1)}`;
+        const rawName = uassetFile.name.replace(/\.uasset$/i, '').replace(/^mhc_/i, '').toLowerCase();
+        if (rawName.includes('advika')) {
+          mhName = 'MetaHuman Advika';
+          targetGlb = '/models/mhc_advika.glb?v=20261004_v4';
+        } else if (rawName.includes('skotukeda')) {
+          mhName = 'MetaHuman Skotukeda5';
+          targetGlb = '/models/skotukeda5.glb?v=20261004_v4';
+        } else {
+          mhName = `MetaHuman ${rawName.charAt(0).toUpperCase() + rawName.slice(1)}`;
+        }
       }
       showToast(`Pacote ${mhName} carregado! Inicializando avatar 3D...`, "info");
-      return loadModel('/models/metahuman.glb', mhName);
+      return loadModel(targetGlb, mhName);
     }
     showToast("Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj, .mhpkg) encontrado.", "error");
     return;

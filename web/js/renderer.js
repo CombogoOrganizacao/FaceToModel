@@ -277,17 +277,20 @@ export class Renderer {
 
     if (lowerName.endsWith('.mhpkg')) {
       // Package MetaHuman Creator (.mhpkg / Unreal Engine)
-      const buffer = await modelCache.fetchWithCache('/models/metahuman.glb?v=20261004_v4', onProgress);
+      const cleanBase = (filename || url).split('/').pop().replace(/\.mhpkg$/i, '').toLowerCase();
+      let targetGlb = '/models/metahuman.glb?v=20261004_v4';
+      let charName = 'MetaHuman';
+      if (cleanBase.includes('advika')) {
+        targetGlb = '/models/mhc_advika.glb?v=20261004_v4';
+        charName = 'MetaHuman_Advika';
+      } else if (cleanBase.includes('skotukeda')) {
+        targetGlb = '/models/skotukeda5.glb?v=20261004_v4';
+        charName = 'MetaHuman_Skotukeda5';
+      }
+      const buffer = await modelCache.fetchWithCache(targetGlb, onProgress);
       const gltf = await this._loader.parseAsync(buffer, '');
       model = gltf.scene;
-      const cleanBase = (filename || url).split('/').pop().replace(/\.mhpkg$/i, '');
-      if (cleanBase.toLowerCase().includes('advika')) {
-        model.name = 'MetaHuman_Advika';
-      } else if (cleanBase.toLowerCase().includes('skotukeda')) {
-        model.name = 'MetaHuman_Skotukeda5';
-      } else {
-        model.name = `MetaHuman_${cleanBase}`;
-      }
+      model.name = charName;
       if (gltf && gltf.animations && gltf.animations.length > 0) {
         this.animations = gltf.animations;
       }
