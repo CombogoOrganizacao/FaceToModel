@@ -516,6 +516,53 @@ export class Renderer {
               }
             }
 
+            // =========================================================================
+            // CASO 1: Modelos PBR Não-MetaHuman (Anime, Sketchfab, VRoid, Blender, Maya)
+            // Rigorosamente preserva as cores, texturas, transparências e materiais do artista!
+            // =========================================================================
+            if (isGLTF && !isMetaHuman) {
+              const isHairOrFur = matName.includes('hair') || matName.includes('fur') ||
+                                  matName.includes('pelo') || matName.includes('card') ||
+                                  matName.includes('feather') || matName.includes('fringe') ||
+                                  matName.includes('fluff') || matName.includes('trim') ||
+                                  matName.includes('lash') || matName.includes('brow') ||
+                                  nodeName.includes('hair') || nodeName.includes('fur') ||
+                                  nodeName.includes('feather') || nodeName.includes('fringe') ||
+                                  nodeName.includes('fluff') || nodeName.includes('trim') ||
+                                  nodeName.includes('lash') || nodeName.includes('brow');
+
+              const hasAlpha = Boolean(
+                m.transparent ||
+                (m.alphaTest > 0) ||
+                m.alphaMap ||
+                (m.opacity !== undefined && m.opacity < 0.999) ||
+                isHairOrFur
+              );
+
+              if (hasAlpha) {
+                m.side = THREE.DoubleSide;
+                m.depthWrite = true;
+                m.depthTest = true;
+                m.transparent = true;
+                m.alphaToCoverage = true;
+                if (m.alphaTest <= 0) {
+                  m.alphaTest = 0.02;
+                }
+                m.needsUpdate = true;
+              } else {
+                m.side = THREE.DoubleSide;
+                m.depthWrite = true;
+                m.depthTest = true;
+                m.transparent = false;
+              }
+
+              return m;
+            }
+
+            // =========================================================================
+            // CASO 2: MetaHumans (Unreal Engine / MetaHuman Creator: Bo, Asha)
+            // =========================================================================
+
             // 2. Camadas Oclusoras dos Olhos / Conchas Corneais Transparentes (MetaHuman / Unreal)
             const isEyeShell = matName.includes('eyeshell') || matName.includes('eyeedge') ||
                                matName.includes('lacrimal') || matName.includes('fluid') ||
@@ -529,18 +576,28 @@ export class Renderer {
               return m;
             }
 
-            // 3. Cílios (MetaHuman Bo, Ada e modelos PBR)
+            // 3. Cílios do MetaHuman (Bo: Oculto a pedido; Demais: Shader de Fios)
             const isLash = matName.includes('lash') || nodeName.includes('lash');
             if (isLash) {
+              const isBo = lowerName.includes('metahuman') || lowerName.includes('bo') || nodeName.includes('bo') || matName.includes('bo_');
+              // Para o MetaHuman Bo, os cílios ficam 100% invisíveis
+              if (isBo) {
+                m.transparent = true;
+                m.opacity = 0.0;
+                m.depthWrite = false;
+                m.depthTest = false;
+                m.visible = false;
+                return m;
+              }
+
               if (m.map) {
-                // Textura Eyelashes_Coverage é máscara de recorte, não albedo difuso
                 m.alphaMap = calibrateTexture(m.map, false);
                 m.map = null;
               } else if (!m.alphaMap) {
                 const proc = this._createProceduralEyelashTextures();
                 m.alphaMap = proc.alphaMap;
               }
-              m.color = new THREE.Color(0x140e0a); // Tom escuro natural de melanina
+              m.color = new THREE.Color(0x140e0a);
               m.roughness = 0.28;
               m.metalness = 0.0;
               m.specularIntensity = 0.85;
@@ -562,19 +619,17 @@ export class Renderer {
               return m;
             }
 
-            // 4. Sobrancelhas (MetaHuman Bo, Ada e PBR)
+            // 4. Sobrancelhas do MetaHuman
             const isBrow = matName.includes('eyebrow') || matName.includes('brow') || nodeName.includes('eyebrow') || nodeName.includes('brow');
             if (isBrow) {
               const hasAttrMap = matName.includes('attribute') || matName.includes('thin_cardsmesh') ||
                                  (m.map && m.map.name && m.map.name.toLowerCase().includes('attribute')) ||
                                  (m.map && m.map.image && m.map.image.src && m.map.image.src.toLowerCase().includes('attribute'));
               if (hasAttrMap) {
-                // Groom CardsAtlas_Attribute: canal Alpha é o recorte dos fios
                 m.alphaMap = calibrateTexture(m.map || m.alphaMap, false);
                 m.map = null;
                 m.color = new THREE.Color(0x1a120c);
               } else if (m.map) {
-                // Textura baked com canal alfa transparente: utiliza m.map diretamente sem alphaMap para preservar fios castanhos
                 calibrateTexture(m.map, true);
                 m.alphaMap = null;
                 m.color = new THREE.Color(0xffffff);
@@ -603,7 +658,7 @@ export class Renderer {
               return m;
             }
 
-            // 5. Cabelos do MetaHuman (Groom Cards & CardsAtlas_Attribute)
+            // 5. Cabelos do MetaHuman
             const isHair = matName.includes('hair') || (matName.includes('cards_m') && !matName.includes('eyebrow')) ||
                            matName.includes('sidesweptfringe') || matName.includes('coil_cardsmesh') ||
                            nodeName.includes('hair');
@@ -612,12 +667,10 @@ export class Renderer {
                                  (m.map && m.map.name && m.map.name.toLowerCase().includes('attribute')) ||
                                  (m.map && m.map.image && m.map.image.src && m.map.image.src.toLowerCase().includes('attribute'));
               if (hasAttrMap) {
-                // Unreal Groom CardsAtlas_Attribute: R=RootTip, G=Seed, B=AO, A=Alpha
                 m.alphaMap = calibrateTexture(m.map || m.alphaMap, false);
                 m.map = null;
-                m.color = new THREE.Color(0x16100b); // Cabelo preto espresso natural
+                m.color = new THREE.Color(0x16100b);
               } else if (m.map) {
-                // Textura baked com canal alfa transparente: utiliza m.map diretamente sem alphaMap
                 calibrateTexture(m.map, true);
                 m.alphaMap = null;
                 m.color = new THREE.Color(0xffffff);
@@ -646,7 +699,7 @@ export class Renderer {
               return m;
             }
 
-            // 6. Olhos / Globo Ocular / Íris / Esclera (Material Físico Sólido com Córnea Clearcoat)
+            // 6. Olhos / Globo Ocular / Íris / Esclera da MetaHuman Asha & MetaHumans
             const isEye = matName.includes('eyeleft') || matName.includes('eyeright') ||
                           matName.includes('eyeball') || matName.includes('eyel_baked') ||
                           matName.includes('eyer_baked') || matName.includes('eye') ||
@@ -654,22 +707,20 @@ export class Renderer {
             if (isEye && !isEyeShell) {
               if (m.map) {
                 calibrateTexture(m.map, true);
-                if (isMetaHuman) {
-                  // ClampToEdgeWrapping com repetição 1x1 e offset 0x0 centraliza exatamente 1 íris na pupila em MetaHumans
-                  m.map.wrapS = THREE.ClampToEdgeWrapping;
-                  m.map.wrapT = THREE.ClampToEdgeWrapping;
-                  m.map.repeat.set(1, 1);
-                  m.map.offset.set(0, 0);
-                  m.map.matrixAutoUpdate = true;
-                  m.map.needsUpdate = true;
-                }
+                // ClampToEdgeWrapping com repetição 1x1 e offset 0x0 centraliza exatamente 1 íris na pupila
+                m.map.wrapS = THREE.ClampToEdgeWrapping;
+                m.map.wrapT = THREE.ClampToEdgeWrapping;
+                m.map.repeat.set(1, 1);
+                m.map.offset.set(0, 0);
+                m.map.matrixAutoUpdate = true;
+                m.map.needsUpdate = true;
               }
-              m.roughness = 0.08;
+              m.roughness = 0.18; // Umidade natural orgânica do olho humano
               m.metalness = 0.0;
-              m.clearcoat = 1.0;
-              m.clearcoatRoughness = 0.03;
-              m.specularIntensity = 1.0;
-              m.specularColor = new THREE.Color(0xffffff);
+              m.clearcoat = 0.35;
+              m.clearcoatRoughness = 0.12;
+              m.specularIntensity = 0.70;
+              m.specularColor = new THREE.Color(0xf0eee8);
               m.transparent = false;
               m.opacity = 1.0;
               m.depthWrite = true;
@@ -677,7 +728,7 @@ export class Renderer {
               m.visible = true;
               m.side = THREE.DoubleSide;
               if (m.color) m.color.setHex(0xffffff);
-              if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.3;
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.75;
               m.needsUpdate = true;
               return m;
             }
@@ -696,7 +747,7 @@ export class Renderer {
               m.transparent = false;
               m.opacity = 1.0;
               if (!m.map) {
-                m.color = new THREE.Color(0x9a3030); // Tom vermelho-rosado mucosal natural
+                m.color = new THREE.Color(0x9a3030);
               }
               m.needsUpdate = true;
               return m;
@@ -713,51 +764,9 @@ export class Renderer {
               m.visible = true;
               m.transparent = false;
               if (!m.map) {
-                m.color = new THREE.Color(0xdad3c5); // Esmalte dental marfim
+                m.color = new THREE.Color(0xdad3c5);
               }
               m.needsUpdate = true;
-              return m;
-            }
-
-            // =========================================================================
-            // CASO 1: Modelos PBR Modernos GLTF / GLB (Blender, Substance, Maya, Sketchfab)
-            // Rigorosamente preserva as cores, texturas e parâmetros autorados pelo artista!
-            // =========================================================================
-            if (isGLTF && !isMetaHuman) {
-              // Cartões de pelos (fur), cabelo, penas e transparência por recorte
-              const isHairOrFur = matName.includes('hair') || matName.includes('fur') ||
-                                  matName.includes('pelo') || matName.includes('card') ||
-                                  matName.includes('feather') || matName.includes('fringe') ||
-                                  matName.includes('fluff') || matName.includes('trim') ||
-                                  nodeName.includes('hair') || nodeName.includes('fur') ||
-                                  nodeName.includes('feather') || nodeName.includes('fringe') ||
-                                  nodeName.includes('fluff') || nodeName.includes('trim');
-
-              const hasAlpha = Boolean(
-                m.transparent ||
-                (m.alphaTest > 0) ||
-                m.alphaMap ||
-                (m.opacity !== undefined && m.opacity < 0.999) ||
-                isHairOrFur
-              );
-
-              if (hasAlpha) {
-                m.side = THREE.DoubleSide;
-                m.depthWrite = true;
-                m.depthTest = true;
-                m.transparent = true;
-                m.alphaToCoverage = true;
-                if (m.alphaTest <= 0) {
-                  m.alphaTest = 0.03;
-                }
-                m.needsUpdate = true;
-              } else {
-                m.side = THREE.DoubleSide;
-                m.depthWrite = true;
-                m.depthTest = true;
-                m.transparent = false;
-              }
-
               return m;
             }
 
