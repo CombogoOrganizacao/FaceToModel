@@ -281,13 +281,13 @@ export class Renderer {
     if (lowerName.endsWith('.mhpkg')) {
       // Package MetaHuman Creator (.mhpkg / Unreal Engine)
       const cleanBase = (filename || url).split('/').pop().replace(/\.mhpkg$/i, '').toLowerCase();
-      let targetGlb = '/models/metahuman.glb?v=20261005_v5';
+      let targetGlb = '/models/metahuman.glb?v=20261005_v30';
       let charName = 'MetaHuman';
       if (cleanBase.includes('advika')) {
-        targetGlb = '/models/mhc_advika.glb?v=20261005_v5';
+        targetGlb = '/models/mhc_advika.glb?v=20261005_v30';
         charName = 'MetaHuman_Advika';
       } else if (cleanBase.includes('skotukeda')) {
-        targetGlb = '/models/skotukeda5.glb?v=20261005_v5';
+        targetGlb = '/models/skotukeda5.glb?v=20261005_v30';
         charName = 'MetaHuman_Skotukeda5';
       }
       const buffer = await modelCache.fetchWithCache(targetGlb, onProgress);

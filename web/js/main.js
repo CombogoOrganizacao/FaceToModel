@@ -965,15 +965,15 @@ async function handleUploadedFiles(files) {
     const manifestFile = files.find((f) => f.name.toLowerCase().includes("manifest.json") || f.name.toLowerCase().endsWith(".uasset"));
     if (manifestFile) {
       let mhName = 'MetaHuman Avatar';
-      let targetGlb = '/models/metahuman.glb?v=20261005_v5';
+      let targetGlb = '/models/metahuman.glb?v=20261005_v30';
       if (uassetFile) {
         const rawName = uassetFile.name.replace(/\.uasset$/i, '').replace(/^mhc_/i, '').toLowerCase();
         if (rawName.includes('advika')) {
           mhName = 'MetaHuman Advika';
-          targetGlb = '/models/mhc_advika.glb?v=20261005_v5';
+          targetGlb = '/models/mhc_advika.glb?v=20261005_v30';
         } else if (rawName.includes('skotukeda')) {
           mhName = 'MetaHuman Skotukeda5';
-          targetGlb = '/models/skotukeda5.glb?v=20261005_v5';
+          targetGlb = '/models/skotukeda5.glb?v=20261005_v30';
         } else {
           mhName = `MetaHuman ${rawName.charAt(0).toUpperCase() + rawName.slice(1)}`;
         }
