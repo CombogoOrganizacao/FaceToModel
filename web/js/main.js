@@ -21,7 +21,7 @@ import { P2PClient } from './p2p-client.js';
 import { Recorder, formatDuration } from './recorder.js';
 import { MotionTimeline } from './motion-timeline.js';
 import { GlassesFilter } from './glasses-filter.js';
-import { exportModelToGLB, buildAnimationClip, exportCurvesCSV, exportCurvesJSON, exportModelToFBX } from './glb-exporter.js';
+import { exportModelToGLB, buildAnimationClip, exportCurvesCSV, exportCurvesJSON, exportModelToFBX, exportModelToOBJ } from './glb-exporter.js';
 import { ExpressionControls, EXPRESSION_CATEGORIES } from './expression-controls.js';
 import { ensureModelBlendshapes } from './blendshape-synthesizer.js';
 import { buildModelMap } from './blendshape-mapper.js';
@@ -959,29 +959,9 @@ async function handleUploadedFiles(files) {
     return n.endsWith(".glb") || n.endsWith(".gltf") || n.endsWith(".fbx") || n.endsWith(".obj");
   });
 
-  // Se for um pacote MetaHuman .uasset / Manifest.json (.mhpkg), inicializa o avatar MetaHuman específico
+  // If no 3D model found in files/archive
   if (!modelFile) {
-    const uassetFile = files.find((f) => f.name.toLowerCase().endsWith(".uasset"));
-    const manifestFile = files.find((f) => f.name.toLowerCase().includes("manifest.json") || f.name.toLowerCase().endsWith(".uasset"));
-    if (manifestFile) {
-      let mhName = 'MetaHuman Avatar';
-      let targetGlb = '/models/metahuman.glb?v=20261005_v30';
-      if (uassetFile) {
-        const rawName = uassetFile.name.replace(/\.uasset$/i, '').replace(/^mhc_/i, '').toLowerCase();
-        if (rawName.includes('advika')) {
-          mhName = 'MetaHuman Advika';
-          targetGlb = '/models/mhc_advika.glb?v=20261005_v30';
-        } else if (rawName.includes('skotukeda')) {
-          mhName = 'MetaHuman Skotukeda5';
-          targetGlb = '/models/skotukeda5.glb?v=20261005_v30';
-        } else {
-          mhName = `MetaHuman ${rawName.charAt(0).toUpperCase() + rawName.slice(1)}`;
-        }
-      }
-      showToast(`Pacote ${mhName} carregado! Inicializando avatar 3D...`, "info");
-      return loadModel(targetGlb, mhName);
-    }
-    showToast("Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj, .mhpkg) encontrado.", "error");
+    showToast("Nenhum modelo 3D compatível (.glb, .gltf, .fbx, .obj) encontrado.", "error");
     return;
   }
 
@@ -1591,6 +1571,43 @@ function setupTimeline() {
     }
   };
 
+  const exportOBJAction = (triggerBtn = null) => {
+    if (!renderer || !renderer.getModel()) {
+      showToast('Nenhum modelo 3D carregado para exportação.', 'error');
+      return;
+    }
+
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.style.opacity = '0.5';
+      triggerBtn.style.pointerEvents = 'none';
+    }
+    showToast('Exportando malha 3D em formato Wavefront OBJ...', 'info');
+
+    try {
+      const model = renderer.getInnerModel() || renderer.getModel();
+      const baseName = currentModelFilename ? currentModelFilename.replace(/\.[^/.]+$/, '') : 'modelo_3d';
+      const filename = `${baseName}.obj`;
+
+      exportModelToOBJ({
+        model: model,
+        filename: filename,
+        download: true,
+      });
+
+      showToast(`Modelo OBJ exportado com sucesso: ${filename}`, 'success');
+    } catch (err) {
+      console.error('[main] Erro na exportação do modelo OBJ:', err);
+      showToast('Erro ao exportar OBJ: ' + err.message, 'error');
+    } finally {
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.style.opacity = '';
+        triggerBtn.style.pointerEvents = '';
+      }
+    }
+  };
+
   // Central de Exportação & Download (Apple HIG Modal)
   const modalExport = $('modal-export-menu');
   const btnCloseExportModal = $('btn-close-export-modal');
@@ -1630,6 +1647,14 @@ function setupTimeline() {
     });
   }
 
+  const btnChoiceOBJ = $('btn-export-choice-obj');
+  if (btnChoiceOBJ) {
+    btnChoiceOBJ.addEventListener('click', () => {
+      closeExportModal();
+      exportOBJAction(btnChoiceOBJ);
+    });
+  }
+
   const btnChoiceCSV = $('btn-export-choice-csv');
   if (btnChoiceCSV) {
     btnChoiceCSV.addEventListener('click', () => {
@@ -1655,7 +1680,7 @@ function setupTimeline() {
   }
 
   // Permitir clicar em qualquer parte do card para acionar o botão
-  ['card-export-fbx', 'card-export-glb', 'card-export-csv', 'card-export-json', 'card-export-mp4'].forEach((cardId) => {
+  ['card-export-fbx', 'card-export-glb', 'card-export-obj', 'card-export-csv', 'card-export-json', 'card-export-mp4'].forEach((cardId) => {
     const card = $(cardId);
     if (!card) return;
     card.style.cursor = 'pointer';
@@ -1679,6 +1704,12 @@ function setupTimeline() {
   const btnSideExportFBX = document.getElementById('btn-side-export-fbx');
   if (btnSideExportFBX) btnSideExportFBX.addEventListener('click', () => exportFBXAction(btnSideExportFBX));
 
+  const btnExportOBJ = document.getElementById('btn-tl-export-obj');
+  if (btnExportOBJ) btnExportOBJ.addEventListener('click', () => exportOBJAction(btnExportOBJ));
+
+  const btnSideExportOBJ = document.getElementById('btn-side-export-obj');
+  if (btnSideExportOBJ) btnSideExportOBJ.addEventListener('click', () => exportOBJAction(btnSideExportOBJ));
+
   const btnExportCSV = $('btn-tl-export-csv');
   if (btnExportCSV) btnExportCSV.addEventListener('click', exportCSVAction);
 
@@ -1690,6 +1721,20 @@ function setupTimeline() {
 
   const btnSideExportJSON = document.getElementById('btn-side-export-json');
   if (btnSideExportJSON) btnSideExportJSON.addEventListener('click', exportJSONAction);
+
+  // Intervalo de Respiro na Timeline
+  const inputTlGap = document.getElementById('input-timeline-gap');
+  if (inputTlGap) {
+    inputTlGap.addEventListener('input', () => {
+      const gapVal = parseFloat(inputTlGap.value);
+      motionTimeline.setBreathingGap(isNaN(gapVal) ? 1.0 : gapVal);
+    });
+    inputTlGap.addEventListener('change', () => {
+      const gapVal = parseFloat(inputTlGap.value);
+      motionTimeline.setBreathingGap(isNaN(gapVal) ? 1.0 : gapVal);
+      showToast(`Intervalo de respiro ajustado para ${motionTimeline.breathingGap.toFixed(1)}s`, 'info');
+    });
+  }
 
   // Botão Exportar MP4 do Trecho Recortado em 1080p 60 FPS
   btnExport.addEventListener('click', async () => {

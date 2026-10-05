@@ -187,6 +187,18 @@
 
       <!-- 3. Ações da Timeline (Direita) -->
       <div class="tl-actions">
+        <!-- Intervalo de Respiro entre Takes / Animações -->
+        <div class="tl-gap-control" style="display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 0.5px solid rgba(255,255,255,0.12);" title="Intervalo de Respiro entre Animações / Takes">
+          <svg class="svg-icon sm" style="width: 12px; height: 12px; color: var(--accent-blue);" viewBox="0 0 24 24">
+            <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <polyline points="8 8 4 12 8 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="16 8 20 12 16 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span style="font-size: 10px; color: var(--label-secondary); white-space: nowrap;">Respiro:</span>
+          <input type="number" id="input-timeline-gap" min="0" max="10" step="0.1" value="1.0" style="width: 36px; font-size: 10px; background: transparent; border: none; color: #fff; text-align: center; font-family: var(--font-mono); outline: none;" title="Segundos de respiro/transição neutra" />
+          <span style="font-size: 10px; color: var(--label-tertiary);">s</span>
+        </div>
+
         <button class="tl-action-btn secondary" id="btn-tl-import-anim" title="Importar Animação (.glb / .fbx)" aria-label="Importar Animação">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -208,7 +220,7 @@
           </svg>
         </button>
 
-        <button class="tl-action-btn primary" id="btn-tl-export-menu" title="Menu de Exportação e Download (FBX, GLB, CSV, JSON, MP4)" aria-label="Exportar Animação">
+        <button class="tl-action-btn primary" id="btn-tl-export-menu" title="Menu de Exportação e Download (GLB, FBX, OBJ, CSV, JSON, MP4)" aria-label="Exportar Animação">
           <svg class="svg-icon sm" viewBox="0 0 24 24">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -218,6 +230,7 @@
         <div style="display: none;" aria-hidden="true">
           <button id="btn-tl-export-glb" title="Exportar GLB"></button>
           <button id="btn-tl-export-fbx" title="Exportar FBX"></button>
+          <button id="btn-tl-export-obj" title="Exportar OBJ"></button>
           <button id="btn-tl-export-csv" title="Exportar CSV"></button>
           <button id="btn-tl-export-json" title="Exportar JSON"></button>
           <button id="btn-tl-export" title="Exportar MP4"></button>
@@ -268,17 +281,14 @@
           <div class="select-field" style="margin-bottom: 12px;">
             <label for="select-model-preset" class="select-label">Modelos Pré-configurados (52 Expressões)</label>
             <select id="select-model-preset" class="apple-select">
-              <option value="/models/facecap.glb?v=20261005_v30" selected>Padrão (FaceCap)</option>
-              <option value="/models/anime.glb?v=20261005_v30">Anime Feminina (VRM Avatar)</option>
-              <option value="/models/metahuman.glb?v=20261005_v30">Realista (MetaHuman Bo)</option>
-              <option value="/models/skotukeda5.glb?v=20261005_v30">Realista (MetaHuman Skotukeda5)</option>
-              <option value="/models/mhc_advika.glb?v=20261005_v30">Realista (MetaHuman Advika)</option>
-              <option value="/models/stylized.glb?v=20261005_v30">Estilizado (Hero)</option>
-              <option value="/models/raccoon.glb?v=20261005_v30">Furry (Raccoon)</option>
+              <option value="/models/facecap.glb?v=20261005_v31" selected>Padrão (FaceCap)</option>
+              <option value="/models/anime.glb?v=20261005_v31">Anime Feminina (VRM Avatar)</option>
+              <option value="/models/stylized.glb?v=20261005_v31">Estilizado (Hero)</option>
+              <option value="/models/raccoon.glb?v=20261005_v31">Furry (Raccoon)</option>
             </select>
           </div>
 
-          <input type="file" id="file-input-model" accept=".glb,.gltf,.fbx,.obj,.mtl,.mhpkg,.zip,.png,.jpg,.jpeg,.webp" multiple style="display: none;" />
+          <input type="file" id="file-input-model" accept=".glb,.gltf,.fbx,.obj,.mtl,.zip,.png,.jpg,.jpeg,.webp" multiple style="display: none;" />
           <input type="file" id="file-input-folder" webkitdirectory directory multiple style="display: none;" />
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
@@ -973,7 +983,27 @@
         </button>
       </div>
 
-      <!-- Opção 5: MP4 Renderizado -->
+      <!-- Opção 5: Wavefront OBJ -->
+      <div class="export-option-card" id="card-export-obj">
+        <div class="export-card-top">
+          <div class="export-format-badge badge-yellow">OBJ</div>
+          <span class="export-target-tag">ZBrush • Maya • 3ds Max • Blender</span>
+        </div>
+        <div class="export-card-body">
+          <h4 class="export-card-title">Wavefront OBJ (Geometria + UVs)</h4>
+          <p class="export-card-desc">Exporta a malha 3D estática com materiais normalizados, coordenadas UV e normais de vértices prontas para edição.</p>
+        </div>
+        <button class="btn-apple export-action-trigger" id="btn-export-choice-obj">
+          <svg class="svg-icon sm" viewBox="0 0 24 24">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="2 17 12 22 22 17" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="2 12 12 17 22 12" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Exportar OBJ
+        </button>
+      </div>
+
+      <!-- Opção 6: MP4 Renderizado -->
       <div class="export-option-card" id="card-export-mp4">
         <div class="export-card-top">
           <div class="export-format-badge badge-blue">MP4</div>
@@ -1005,6 +1035,6 @@ window.addEventListener('unhandledrejection', function(e) {
   console.error('[FaceToModel Promise Error]', e.reason);
 });
 </script>
-<script type="module" src="/js/main.js?v=20261005_v30"></script>
+<script type="module" src="/js/main.js?v=20261005_v31"></script>
 </body>
 </html>

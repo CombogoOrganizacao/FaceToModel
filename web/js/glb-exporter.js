@@ -16,6 +16,7 @@
 
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { OBJExporter }  from 'three/addons/exporters/OBJExporter.js';
 
 /**
  * Builds a THREE.AnimationClip from MotionTimeline recorded frames.
@@ -689,5 +690,37 @@ export async function exportModelToFBX({
   setTimeout(() => URL.revokeObjectURL(url), 15000);
   console.log(`[glb-exporter] FBX exportado com sucesso: ${filename} (${(fbxBlob.size / 1024 / 1024).toFixed(2)} MB)`);
   return fbxBlob;
+}
+
+/**
+ * Exports the 3D model geometry and materials to standard Wavefront OBJ format.
+ *
+ * @param {Object} options
+ * @param {THREE.Object3D} options.model - The 3D model scene
+ * @param {string} [options.filename] - Output file name (.obj)
+ * @param {boolean} [options.download] - Whether to automatically trigger browser download
+ * @returns {Blob}
+ */
+export function exportModelToOBJ({
+  model,
+  filename = 'facetomodel_model.obj',
+  download = true,
+}) {
+  const exporter = new OBJExporter();
+  const result = exporter.parse(model);
+
+  const blob = new Blob([result], { type: 'text/plain' });
+  if (download) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+    console.log(`[glb-exporter] OBJ exportado com sucesso: ${filename} (${(blob.size / 1024).toFixed(1)} KB)`);
+  }
+  return blob;
 }
 

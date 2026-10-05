@@ -1730,6 +1730,12 @@ body.app-loading-active .timeline-dock {
   border: 0.5px solid rgba(59, 130, 246, 0.4);
 }
 
+.badge-yellow {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde047;
+  border: 0.5px solid rgba(234, 179, 8, 0.4);
+}
+
 .export-target-tag {
   font-size: 10px;
   color: var(--label-tertiary);

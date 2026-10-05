@@ -41,6 +41,7 @@ export class MotionTimeline {
     this.totalDuration = 0;
     this.trimIn = 0;
     this.trimOut = 0;
+    this.breathingGap = 1.0;
 
     // Internal timing
     this._recordStartTime = 0;
@@ -70,6 +71,14 @@ export class MotionTimeline {
 
     // Call state change
     this._notify();
+  }
+
+  /**
+   * Set breathing gap duration in seconds between takes/animations.
+   * @param {number} seconds
+   */
+  setBreathingGap(seconds) {
+    this.breathingGap = Math.max(0, parseFloat(seconds) || 0);
   }
 
   /* ─── Waveform Canvas Binding ─────────────────────────────────────────── */
@@ -140,8 +149,19 @@ export class MotionTimeline {
         this._audioChunks = [];
         this.drawWaveform();
       } else {
-        // Continuing on existing timeline
-        this._accumulatedTime = this.totalDuration;
+        // Continuing on existing timeline: add breathing gap buffer
+        const gap = typeof this.breathingGap === 'number' && this.breathingGap >= 0 ? this.breathingGap : 1.0;
+        if (gap > 0 && this.frames.length > 0) {
+          const neutralFrame = {
+            time: this.totalDuration + (gap * 0.5),
+            blendShapes: {},
+            rotation: null
+          };
+          this.frames.push(neutralFrame);
+          this._accumulatedTime = this.totalDuration + gap;
+        } else {
+          this._accumulatedTime = this.totalDuration;
+        }
       }
       this.isRecording = true;
       this.isPaused = false;
