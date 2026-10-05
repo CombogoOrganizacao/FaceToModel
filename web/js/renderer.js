@@ -25,7 +25,6 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { buildModelMap, applyBlendShapes } from './blendshape-mapper.js';
 import { ensureModelBlendshapes, rebuildModelBlendshapes } from './blendshape-synthesizer.js';
-import { createMetaHumanEyeMaterial, createCorneaShellMaterial } from './shaders/metahuman-eye-shader.js';
 import { openRigLogicDriver } from './riglogic/openriglogic-driver.js';
 import { modelCache } from './model-cache.js';
 
@@ -517,15 +516,11 @@ export class Renderer {
               }
             }
 
-            // 2. Conchas Corneais Transparentes e Camadas Oclusoras (MetaHuman / Unreal)
-            const isCorneaShell = matName.includes('eyeshell') || matName.includes('cornea_shell') || matName.includes('eyeedge');
-            if (isCorneaShell) {
-              node.renderOrder = 2;
-              return createCorneaShellMaterial();
-            }
-
-            const isOccluder = matName.includes('lacrimal') || matName.includes('fluid') || matName.includes('m_hide');
-            if (isOccluder) {
+            // 2. Camadas Oclusoras dos Olhos / Conchas Corneais Transparentes (MetaHuman / Unreal)
+            const isEyeShell = matName.includes('eyeshell') || matName.includes('eyeedge') ||
+                               matName.includes('lacrimal') || matName.includes('fluid') ||
+                               matName.includes('cornea_shell') || matName.includes('m_hide');
+            if (isEyeShell) {
               m.transparent = true;
               m.opacity = 0.0;
               m.depthWrite = false;
@@ -651,31 +646,40 @@ export class Renderer {
               return m;
             }
 
-            // 6. Olhos / Globo Ocular / Íris / Esclera (MetaHuman Optical Eye Shader com Parallax)
+            // 6. Olhos / Globo Ocular / Íris / Esclera (Material Físico Sólido com Córnea Clearcoat)
             const isEye = matName.includes('eyeleft') || matName.includes('eyeright') ||
                           matName.includes('eyeball') || matName.includes('eyel_baked') ||
                           matName.includes('eyer_baked') || matName.includes('eye') ||
-                          nodeName === 'eyes' || nodeName.includes('eye');
-            if (isEye && !isCorneaShell && !isOccluder) {
-              node.renderOrder = 1;
+                          nodeName === 'eyes' || nodeName === 'eye' || nodeName.includes('eyeball');
+            if (isEye && !isEyeShell) {
               if (m.map) {
                 calibrateTexture(m.map, true);
-                m.map.wrapS = THREE.ClampToEdgeWrapping;
-                m.map.wrapT = THREE.ClampToEdgeWrapping;
-                m.map.repeat.set(1, 1);
-                m.map.offset.set(0, 0);
-                m.map.matrixAutoUpdate = true;
-                m.map.needsUpdate = true;
+                if (isMetaHuman) {
+                  // ClampToEdgeWrapping com repetição 1x1 e offset 0x0 centraliza exatamente 1 íris na pupila em MetaHumans
+                  m.map.wrapS = THREE.ClampToEdgeWrapping;
+                  m.map.wrapT = THREE.ClampToEdgeWrapping;
+                  m.map.repeat.set(1, 1);
+                  m.map.offset.set(0, 0);
+                  m.map.matrixAutoUpdate = true;
+                  m.map.needsUpdate = true;
+                }
               }
-              const eyeMat = createMetaHumanEyeMaterial({
-                map: m.map,
-                normalMap: m.normalMap,
-                irisDepth: 0.075,
-                limbusWidth: 0.042,
-                pupilDilation: 1.0,
-                irisRadius: 0.28,
-              });
-              return eyeMat;
+              m.roughness = 0.08;
+              m.metalness = 0.0;
+              m.clearcoat = 1.0;
+              m.clearcoatRoughness = 0.03;
+              m.specularIntensity = 1.0;
+              m.specularColor = new THREE.Color(0xffffff);
+              m.transparent = false;
+              m.opacity = 1.0;
+              m.depthWrite = true;
+              m.depthTest = true;
+              m.visible = true;
+              m.side = THREE.DoubleSide;
+              if (m.color) m.color.setHex(0xffffff);
+              if (m.envMapIntensity !== undefined) m.envMapIntensity = 1.3;
+              m.needsUpdate = true;
+              return m;
             }
 
             // 7. Língua e Cavidade Oral / Mucosa / Cartilagem / Saliva
