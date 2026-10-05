@@ -323,7 +323,121 @@ export class Renderer {
         return loadedTextures.get(texUrl);
       };
 
-      const singleFallbackAlbedo = imageKeys.length === 1 ? imageKeys[0] : null;
+      const scoreTextureCandidate = (fileKey, matName, meshName, mapType) => {
+        const lowerKey = fileKey.toLowerCase();
+        const baseFileName = lowerKey.split('/').pop().split('\\').pop().replace(/\.[a-z0-9]+$/, '');
+        const cleanMat = matName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cleanMesh = meshName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const cleanBase = baseFileName.replace(/[^a-z0-9]/g, '');
+
+        // 1. Type compatibility check
+        const isNormalFile = /(normal|norm|nrm|nml|bump)/i.test(baseFileName);
+        const isRoughnessFile = /(roughness|rough|gloss|ns)/i.test(baseFileName);
+        const isMetallicFile = /(metallic|metalness|metal|refl)/i.test(baseFileName);
+        const isAlphaFile = /(opacity|alpha|mask|transp|cutout)/i.test(baseFileName);
+        const isDiffuseFile = /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(baseFileName);
+
+        if (mapType === 'diffuse') {
+          if (isNormalFile || isRoughnessFile || isMetallicFile || isAlphaFile) return -10000;
+        } else if (mapType === 'normal') {
+          if (!isNormalFile) return -10000;
+        } else if (mapType === 'roughness') {
+          if (!isRoughnessFile) return -10000;
+        } else if (mapType === 'metallic') {
+          if (!isMetallicFile) return -10000;
+        } else if (mapType === 'alpha') {
+          if (!isAlphaFile) return -10000;
+        }
+
+        let score = 0;
+        if (mapType === 'diffuse' && isDiffuseFile) score += 50;
+
+        // 2. Anatomical domain clash detection
+        const domains = [
+          { name: 'head', rx: /(head|face|cabeça|rosto|skin_head)/i },
+          { name: 'body', rx: /(body|torso|corpo|skin_body)/i },
+          { name: 'arm', rx: /(arm|braço|hand|mão|skin_arm)/i },
+          { name: 'leg', rx: /(leg|perna|foot|pé|skin_leg)/i },
+          { name: 'eye_l', rx: /(eye_l|eyeleft|eyel|cornea_l)/i },
+          { name: 'eye_r', rx: /(eye_r|eyeright|eyer|cornea_r)/i },
+          { name: 'eye_gen', rx: /(eye|cornea|pupil|iris|olho)/i },
+          { name: 'lash', rx: /(eyelash|lash|cilio)/i },
+          { name: 'brow', rx: /(eyebrow|brow|sobrancelha)/i },
+          { name: 'teeth_up', rx: /(upper_teeth|teeth_up|tooth_up)/i },
+          { name: 'teeth_low', rx: /(lower_teeth|teeth_down|tooth_low)/i },
+          { name: 'teeth_gen', rx: /(teeth|tooth|dente)/i },
+          { name: 'tongue', rx: /(tongue|lingua)/i },
+          { name: 'scalp', rx: /(scalp)/i },
+          { name: 'hair', rx: /(hair|cabelo)/i },
+          { name: 'dress', rx: /(dress|vestido)/i },
+          { name: 'pants', rx: /(pants|calça)/i },
+          { name: 'jacket', rx: /(jacket|jaqueta)/i },
+          { name: 'shoes', rx: /(shoes|sapato|boots)/i },
+          { name: 'gloves', rx: /(gloves|luva)/i },
+        ];
+
+        let matDomain = null;
+        let fileDomain = null;
+
+        for (const d of domains) {
+          if (!matDomain && d.rx.test(matName)) matDomain = d.name;
+          if (!fileDomain && d.rx.test(baseFileName)) fileDomain = d.name;
+        }
+
+        if (matDomain && fileDomain) {
+          if (matDomain === fileDomain) {
+            score += 400;
+          } else {
+            // Direct clash between distinct anatomical parts -> heavy penalty!
+            return -5000;
+          }
+        }
+
+        // 3. String & Token affinity
+        const strippedFile = cleanBase
+          .replace(/(diffuse|albedo|basecolor|base_color|normal|bump|roughness|metallic|metal|opacity|alpha|specular|color|tex|jpg|png|webp)/g, '');
+
+        if (strippedFile.length >= 3 && cleanMat.includes(strippedFile)) {
+          score += 800;
+        } else if (cleanMat.length >= 3 && strippedFile.includes(cleanMat)) {
+          score += 800;
+        }
+
+        // Token matching
+        const matTokens = `${matName} ${meshName}`.toLowerCase().split(/[^a-z0-9]/).filter((t) => t.length >= 3);
+        for (const token of matTokens) {
+          if (baseFileName.includes(token)) {
+            score += 120;
+          }
+        }
+
+        // Suffix/Version matching (e.g. 0001, sg1, sg2, 1sg, 1sg1)
+        const variantMatches = matName.match(/(sg\d+|\d+sg|\d{3,4}|\.\d{3})/i);
+        if (variantMatches) {
+          const vToken = variantMatches[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (cleanBase.includes(vToken)) {
+            score += 250;
+          }
+        }
+
+        return score;
+      };
+
+      const findBestTextureKey = (matName, meshName, mapType) => {
+        let bestKey = null;
+        let highestScore = 0;
+
+        for (const key of imageKeys) {
+          const score = scoreTextureCandidate(key, matName, meshName, mapType);
+          if (score > highestScore) {
+            highestScore = score;
+            bestKey = key;
+          }
+        }
+
+        return bestKey;
+      };
+
       const createdMaterials = new Map();
 
       model.traverse((node) => {
@@ -357,7 +471,7 @@ export class Renderer {
               });
             }
 
-            // 2. Se não tem textura MTL, vincular do assetMap por correspondência de tokens
+            // 2. Se não tem textura MTL, vincular do assetMap via busca anatômica de precisão
             let albedoKey = null;
             let normalKey = null;
             let roughnessKey = null;
@@ -365,32 +479,11 @@ export class Renderer {
             let alphaKey = null;
 
             if (imageKeys.length > 0) {
-              const tokens = searchKey.split(/[^a-z0-9]/).filter((t) => t.length >= 3);
-              for (const token of tokens) {
-                if (!albedoKey) {
-                  albedoKey = imageKeys.find((k) => {
-                    const lk = k.toLowerCase();
-                    return lk.includes(token) && /(diffuse|albedo|basecolor|base_color|color|col|tex)/i.test(lk);
-                  }) || imageKeys.find((k) => k.toLowerCase().includes(token) && !/(normal|norm|nrm|rough|metal|opacity|alpha|mask|spec)/i.test(k));
-                }
-                if (!normalKey) {
-                  normalKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(normal|norm|nrm)/i.test(k));
-                }
-                if (!roughnessKey) {
-                  roughnessKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(roughness|rough)/i.test(k));
-                }
-                if (!metallicKey) {
-                  metallicKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(metallic|metalness|metal)/i.test(k));
-                }
-                if (!alphaKey && isHairOrLash) {
-                  alphaKey = imageKeys.find((k) => k.toLowerCase().includes(token) && /(opacity|alpha|mask|cutout)/i.test(k));
-                }
-              }
-
-              // Fallback difuso apenas se existir exatamente 1 imagem no diretório
-              if (!albedoKey && singleFallbackAlbedo) {
-                albedoKey = singleFallbackAlbedo;
-              }
+              albedoKey = findBestTextureKey(matName, meshName, 'diffuse') || (imageKeys.length === 1 ? imageKeys[0] : null);
+              normalKey = findBestTextureKey(matName, meshName, 'normal');
+              roughnessKey = findBestTextureKey(matName, meshName, 'roughness');
+              metallicKey = findBestTextureKey(matName, meshName, 'metallic');
+              alphaKey = findBestTextureKey(matName, meshName, 'alpha');
             }
 
             const matKey = `${albedoKey || ''}|${normalKey || ''}|${roughnessKey || ''}|${metallicKey || ''}|${alphaKey || ''}|${matName}`;
@@ -401,7 +494,7 @@ export class Renderer {
               const metallicTex = metallicKey ? getTexture(metallicKey, false) : null;
               const alphaTex = (alphaKey && isHairOrLash) ? getTexture(alphaKey, false) : null;
 
-              const isCutout = Boolean(alphaTex) && isHairOrLash;
+              const isCutout = (Boolean(alphaTex) && isHairOrLash) || (isHairOrLash && /(transparency|alpha|card)/i.test(searchKey));
 
               const pbrMat = new THREE.MeshStandardMaterial({
                 name: origMat?.name || matName || meshName || 'AutoPBR',

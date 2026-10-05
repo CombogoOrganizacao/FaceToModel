@@ -827,13 +827,429 @@ const DEFORMATION_RULES = {
  * @param {THREE.Mesh} mesh
  * @param {Object} [options]
  * @param {number} [options.globalIntensity] - Global deformation scale (default 1.0)
+/**
+ * Helper to add a relative Morph Target attribute to a mesh and register it in morphTargetDictionary.
+ * @param {THREE.Mesh} mesh
+ * @param {string} faceCapName
+ * @param {string} stdName
+ * @param {Float32Array} deltaBuffer
+ */
+function addMorphTargetToMesh(mesh, faceCapName, stdName, deltaBuffer) {
+  const geom = mesh.geometry;
+  if (!geom.morphAttributes) geom.morphAttributes = {};
+  if (!geom.morphAttributes.position) geom.morphAttributes.position = [];
+  if (!mesh.morphTargetDictionary) mesh.morphTargetDictionary = {};
+  geom.morphTargetsRelative = true;
+
+  const morphAttr = new THREE.BufferAttribute(deltaBuffer, 3);
+  morphAttr.name = faceCapName;
+  const targetIndex = geom.morphAttributes.position.length;
+  geom.morphAttributes.position.push(morphAttr);
+
+  mesh.morphTargetDictionary[faceCapName] = targetIndex;
+  if (stdName && stdName !== faceCapName) {
+    mesh.morphTargetDictionary[stdName] = targetIndex;
+  }
+}
+
+/**
+ * Finds all facial component meshes (Face Skin, Eyeballs, Teeth, Tongue, Lashes/Brows) in model.
+ * @param {THREE.Object3D} model
+ * @returns {{ faceMesh: THREE.Mesh|null, eyeMeshes: THREE.Mesh[], teethMeshes: THREE.Mesh[], tongueMeshes: THREE.Mesh[], lashBrowMeshes: THREE.Mesh[] }}
+ */
+export function findFacialComponentMeshes(model) {
+  const result = {
+    faceMesh: findFaceMesh(model),
+    eyeMeshes: [],
+    teethMeshes: [],
+    tongueMeshes: [],
+    lashBrowMeshes: []
+  };
+
+  if (!model) return result;
+
+  const eyeRegex = /(eye|olho|cornea|pupil|iris|eyeball|eyeshell|tearline|eyeocclusion|eyeedge|lacrimal)/i;
+  const teethRegex = /(teeth|tooth|dente|denture|gums|gengiva)/i;
+  const tongueRegex = /(tongue|lingua)/i;
+  const lashBrowRegex = /(eyelash|lash|cilio|eyebrow|brow|sobrancelha)/i;
+
+  model.traverse((node) => {
+    if (node.isMesh && node.geometry && node.geometry.attributes.position) {
+      if (node === result.faceMesh) return;
+      const name = (node.name || '').toLowerCase();
+      const count = node.geometry.attributes.position.count;
+      if (count < 4) return;
+
+      if (tongueRegex.test(name)) {
+        result.tongueMeshes.push(node);
+      } else if (teethRegex.test(name)) {
+        result.teethMeshes.push(node);
+      } else if (lashBrowRegex.test(name)) {
+        result.lashBrowMeshes.push(node);
+      } else if (eyeRegex.test(name)) {
+        result.eyeMeshes.push(node);
+      }
+    }
+  });
+
+  return result;
+}
+
+/**
+ * Synthesizes eye gaze (eyeLookIn/Out/Up/Down_L/R) and eye aperture morph targets on eyeball meshes.
+ * @param {THREE.Mesh} mesh
+ * @param {Object} head
+ * @param {Object} options
+ * @returns {number} Count of blendshapes added
+ */
+export function synthesizeEyeBlendshapes(mesh, head, options = {}) {
+  if (!mesh || !mesh.geometry || !mesh.geometry.attributes.position) return 0;
+  const geom = mesh.geometry;
+  const posAttr = geom.attributes.position;
+  const count = posAttr.count;
+  if (count < 4) return 0;
+
+  const { eyeIntensity = 1.0, globalIntensity = 1.0 } = options;
+  const effectiveScale = eyeIntensity * globalIntensity;
+
+  // 1. Determine mesh bounds and centroids
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+
+  for (let i = 0; i < count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+
+  const midX = (minX + maxX) * 0.5;
+  const meshName = (mesh.name || '').toLowerCase();
+  const isLeftOnly = /(eye_l|eyeleft|eyel|cornea_l)/i.test(meshName);
+  const isRightOnly = /(eye_r|eyeright|eyer|cornea_r)/i.test(meshName);
+  const isOcclusionOrTear = /(tearline|eyeocclusion|eyeedge|lacrimal)/i.test(meshName);
+
+  // Centroids for Left Eye & Right Eye clusters
+  let sumLX = 0, sumLY = 0, sumLZ = 0, countL = 0;
+  let sumRX = 0, sumRY = 0, sumRZ = 0, countR = 0;
+
+  for (let i = 0; i < count; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+
+    if (isLeftOnly) {
+      sumLX += x; sumLY += y; sumLZ += z; countL++;
+    } else if (isRightOnly) {
+      sumRX += x; sumRY += y; sumRZ += z; countR++;
+    } else if (x < midX) {
+      sumLX += x; sumLY += y; sumLZ += z; countL++;
+    } else {
+      sumRX += x; sumRY += y; sumRZ += z; countR++;
+    }
+  }
+
+  const centerL = countL > 0 ? new THREE.Vector3(sumLX / countL, sumLY / countL, sumLZ / countL) : new THREE.Vector3(midX - 0.03, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
+  const centerR = countR > 0 ? new THREE.Vector3(sumRX / countR, sumRY / countR, sumRZ / countR) : new THREE.Vector3(midX + 0.03, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
+
+  const gazeAngle = 0.32 * effectiveScale; // ~18.5 degrees max rotation
+  const forwardSign = head ? head.forwardSign : 1;
+
+  // Helper to create gaze rotation morph target
+  const createGazeTarget = (isLeftTarget, angleYaw, anglePitch) => {
+    const delta = new Float32Array(count * 3);
+    const cosY = Math.cos(angleYaw);
+    const sinY = Math.sin(angleYaw);
+    const cosP = Math.cos(anglePitch);
+    const sinP = Math.sin(anglePitch);
+
+    for (let i = 0; i < count; i++) {
+      const vx = posAttr.getX(i);
+      const vy = posAttr.getY(i);
+      const vz = posAttr.getZ(i);
+
+      const isVertLeft = isLeftOnly ? true : (isRightOnly ? false : (vx < midX));
+      if (isVertLeft !== isLeftTarget) continue;
+
+      const c = isLeftTarget ? centerL : centerR;
+      let rx = vx - c.x;
+      let ry = vy - c.y;
+      let rz = vz - c.z;
+
+      // Yaw rotation around Y axis
+      let nx = rx * cosY + rz * sinY;
+      let nz = -rx * sinY + rz * cosY;
+
+      // Pitch rotation around X axis
+      let ny = ry * cosP - nz * sinP;
+      nz = ry * sinP + nz * cosP;
+
+      delta[i * 3 + 0] = nx - rx;
+      delta[i * 3 + 1] = ny - ry;
+      delta[i * 3 + 2] = (nz - rz) * forwardSign;
+    }
+    return delta;
+  };
+
+  // Helper to create blink displacement (for tearline / occlusion / cornea)
+  const createBlinkTarget = (isLeftTarget, isSquint = false, isWide = false) => {
+    const delta = new Float32Array(count * 3);
+    const headHeight = head ? head.headHeight : Math.max(0.1, maxY - minY);
+    const dy = isWide ? headHeight * 0.02 * effectiveScale : (isSquint ? headHeight * 0.012 * effectiveScale : -headHeight * 0.035 * effectiveScale);
+
+    for (let i = 0; i < count; i++) {
+      const vx = posAttr.getX(i);
+      const isVertLeft = isLeftOnly ? true : (isRightOnly ? false : (vx < midX));
+      if (isVertLeft !== isLeftTarget) continue;
+
+      delta[i * 3 + 1] = dy;
+      if (!isWide && !isSquint) {
+        // Displace slightly back on blink to avoid clipping eyelid
+        delta[i * 3 + 2] = -headHeight * 0.005 * forwardSign;
+      }
+    }
+    return delta;
+  };
+
+  let added = 0;
+
+  // Gaze Morph Targets:
+  // Inward (Nasal: Left rotates +Yaw, Right rotates -Yaw)
+  // Outward (Temporal: Left rotates -Yaw, Right rotates +Yaw)
+  if (!isRightOnly) {
+    addMorphTargetToMesh(mesh, 'eyeLookIn_L', 'eyeLookInLeft', createGazeTarget(true, gazeAngle, 0));
+    addMorphTargetToMesh(mesh, 'eyeLookOut_L', 'eyeLookOutLeft', createGazeTarget(true, -gazeAngle, 0));
+    addMorphTargetToMesh(mesh, 'eyeLookUp_L', 'eyeLookUpLeft', createGazeTarget(true, 0, gazeAngle));
+    addMorphTargetToMesh(mesh, 'eyeLookDown_L', 'eyeLookDownLeft', createGazeTarget(true, 0, -gazeAngle));
+    addMorphTargetToMesh(mesh, 'eyeBlink_L', 'eyeBlinkLeft', createBlinkTarget(true, false, false));
+    addMorphTargetToMesh(mesh, 'eyeSquint_L', 'eyeSquintLeft', createBlinkTarget(true, true, false));
+    addMorphTargetToMesh(mesh, 'eyeWide_L', 'eyeWideLeft', createBlinkTarget(true, false, true));
+    added += 7;
+  }
+
+  if (!isLeftOnly) {
+    addMorphTargetToMesh(mesh, 'eyeLookIn_R', 'eyeLookInRight', createGazeTarget(false, -gazeAngle, 0));
+    addMorphTargetToMesh(mesh, 'eyeLookOut_R', 'eyeLookOutRight', createGazeTarget(false, gazeAngle, 0));
+    addMorphTargetToMesh(mesh, 'eyeLookUp_R', 'eyeLookUpRight', createGazeTarget(false, 0, gazeAngle));
+    addMorphTargetToMesh(mesh, 'eyeLookDown_R', 'eyeLookDownRight', createGazeTarget(false, 0, -gazeAngle));
+    addMorphTargetToMesh(mesh, 'eyeBlink_R', 'eyeBlinkRight', createBlinkTarget(false, false, false));
+    addMorphTargetToMesh(mesh, 'eyeSquint_R', 'eyeSquintRight', createBlinkTarget(false, true, false));
+    addMorphTargetToMesh(mesh, 'eyeWide_R', 'eyeWideRight', createBlinkTarget(false, false, true));
+    added += 7;
+  }
+
+  const total = geom.morphAttributes.position.length;
+  mesh.morphTargetInfluences = new Array(total).fill(0);
+  if (typeof mesh.updateMorphTargets === 'function') mesh.updateMorphTargets();
+  geom.needsUpdate = true;
+
+  console.log(`[Auto-Rig] Olhos configurados: ${added} morph targets em "${mesh.name || 'EyeMesh'}"`);
+  return added;
+}
+
+/**
+ * Synthesizes jaw & mouth morph targets on teeth meshes (splits upper/lower arch).
+ * @param {THREE.Mesh} mesh
+ * @param {Object} head
+ * @param {Object} options
+ * @returns {number} Count of blendshapes added
+ */
+export function synthesizeTeethBlendshapes(mesh, head, options = {}) {
+  if (!mesh || !mesh.geometry || !mesh.geometry.attributes.position) return 0;
+  const geom = mesh.geometry;
+  const posAttr = geom.attributes.position;
+  const count = posAttr.count;
+  if (count < 4) return 0;
+
+  const { mouthIntensity = 1.0, globalIntensity = 1.0 } = options;
+  const effectiveScale = mouthIntensity * globalIntensity;
+
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const y = posAttr.getY(i);
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  const splitY = (minY + maxY) * 0.5;
+  const meshName = (mesh.name || '').toLowerCase();
+  const isLowerOnly = /(lower_teeth|teeth_down|lowerteeth)/i.test(meshName);
+  const isUpperOnly = /(upper_teeth|teeth_up|upperteeth)/i.test(meshName);
+
+  const headHeight = head ? head.headHeight : Math.max(0.1, maxY - minY);
+  const headWidth = head ? head.headWidth : 0.15;
+  const headDepth = head ? head.headDepth : 0.15;
+  const forwardSign = head ? head.forwardSign : 1;
+
+  const createLowerArchTarget = (dx, dy, dz) => {
+    const delta = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const y = posAttr.getY(i);
+      const isLower = isLowerOnly ? true : (isUpperOnly ? false : (y <= splitY));
+      if (!isLower) continue;
+
+      delta[i * 3 + 0] = dx;
+      delta[i * 3 + 1] = dy;
+      delta[i * 3 + 2] = dz * forwardSign;
+    }
+    return delta;
+  };
+
+  if (!isUpperOnly) {
+    addMorphTargetToMesh(mesh, 'jawOpen', 'jawOpen', createLowerArchTarget(0, -headHeight * 0.085 * effectiveScale, headDepth * 0.015 * effectiveScale));
+    addMorphTargetToMesh(mesh, 'jawForward', 'jawForward', createLowerArchTarget(0, 0, headDepth * 0.035 * effectiveScale));
+    addMorphTargetToMesh(mesh, 'jawLeft', 'jawLeft', createLowerArchTarget(-headWidth * 0.03 * effectiveScale, 0, 0));
+    addMorphTargetToMesh(mesh, 'jawRight', 'jawRight', createLowerArchTarget(headWidth * 0.03 * effectiveScale, 0, 0));
+    addMorphTargetToMesh(mesh, 'mouthClose', 'mouthClose', createLowerArchTarget(0, headHeight * 0.01 * effectiveScale, 0));
+    addMorphTargetToMesh(mesh, 'mouthFunnel', 'mouthFunnel', createLowerArchTarget(0, -headHeight * 0.025 * effectiveScale, headDepth * 0.01 * effectiveScale));
+    addMorphTargetToMesh(mesh, 'mouthPucker', 'mouthPucker', createLowerArchTarget(0, -headHeight * 0.02 * effectiveScale, 0));
+  }
+
+  const total = geom.morphAttributes.position.length;
+  mesh.morphTargetInfluences = new Array(total).fill(0);
+  if (typeof mesh.updateMorphTargets === 'function') mesh.updateMorphTargets();
+  geom.needsUpdate = true;
+
+  console.log(`[Auto-Rig] Dentes configurados: morph targets em "${mesh.name || 'TeethMesh'}"`);
+  return 7;
+}
+
+/**
+ * Synthesizes jaw & protrusion morph targets on tongue meshes.
+ * @param {THREE.Mesh} mesh
+ * @param {Object} head
+ * @param {Object} options
+ * @returns {number} Count of blendshapes added
+ */
+export function synthesizeTongueBlendshapes(mesh, head, options = {}) {
+  if (!mesh || !mesh.geometry || !mesh.geometry.attributes.position) return 0;
+  const geom = mesh.geometry;
+  const posAttr = geom.attributes.position;
+  const count = posAttr.count;
+  if (count < 4) return 0;
+
+  const { mouthIntensity = 1.0, globalIntensity = 1.0 } = options;
+  const effectiveScale = mouthIntensity * globalIntensity;
+
+  const headHeight = head ? head.headHeight : 0.2;
+  const headDepth = head ? head.headDepth : 0.2;
+  const forwardSign = head ? head.forwardSign : 1;
+
+  const createTongueTarget = (dx, dy, dz) => {
+    const delta = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      delta[i * 3 + 0] = dx;
+      delta[i * 3 + 1] = dy;
+      delta[i * 3 + 2] = dz * forwardSign;
+    }
+    return delta;
+  };
+
+  addMorphTargetToMesh(mesh, 'jawOpen', 'jawOpen', createTongueTarget(0, -headHeight * 0.06 * effectiveScale, headDepth * 0.01 * effectiveScale));
+  addMorphTargetToMesh(mesh, 'tongueOut', 'tongueOut', createTongueTarget(0, headHeight * 0.015 * effectiveScale, headDepth * 0.16 * effectiveScale));
+  addMorphTargetToMesh(mesh, 'mouthFunnel', 'mouthFunnel', createTongueTarget(0, -headHeight * 0.02 * effectiveScale, headDepth * 0.04 * effectiveScale));
+  addMorphTargetToMesh(mesh, 'mouthPucker', 'mouthPucker', createTongueTarget(0, -headHeight * 0.015 * effectiveScale, headDepth * 0.03 * effectiveScale));
+
+  const total = geom.morphAttributes.position.length;
+  mesh.morphTargetInfluences = new Array(total).fill(0);
+  if (typeof mesh.updateMorphTargets === 'function') mesh.updateMorphTargets();
+  geom.needsUpdate = true;
+
+  console.log(`[Auto-Rig] Língua configurada: morph targets em "${mesh.name || 'TongueMesh'}"`);
+  return 4;
+}
+
+/**
+ * Synthesizes morph targets on separate eyelash and eyebrow meshes.
+ * @param {THREE.Mesh} mesh
+ * @param {Object} head
+ * @param {Object} options
+ * @returns {number} Count of blendshapes added
+ */
+export function synthesizeLashBrowBlendshapes(mesh, head, options = {}) {
+  if (!mesh || !mesh.geometry || !mesh.geometry.attributes.position) return 0;
+  const geom = mesh.geometry;
+  const posAttr = geom.attributes.position;
+  const count = posAttr.count;
+  if (count < 4) return 0;
+
+  const { eyeIntensity = 1.0, browIntensity = 1.0, globalIntensity = 1.0 } = options;
+  const meshName = (mesh.name || '').toLowerCase();
+  const isBrow = /(eyebrow|brow|sobrancelha)/i.test(meshName);
+
+  let minX = Infinity, maxX = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const x = posAttr.getX(i);
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+  }
+  const midX = (minX + maxX) * 0.5;
+
+  const headHeight = head ? head.headHeight : 0.2;
+  const forwardSign = head ? head.forwardSign : 1;
+
+  const createTarget = (isLeftTarget, dy, dz = 0) => {
+    const delta = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const vx = posAttr.getX(i);
+      const isVertLeft = vx < midX;
+      if (isVertLeft !== isLeftTarget) continue;
+
+      delta[i * 3 + 1] = dy;
+      delta[i * 3 + 2] = dz * forwardSign;
+    }
+    return delta;
+  };
+
+  let added = 0;
+
+  if (isBrow) {
+    const scale = browIntensity * globalIntensity;
+    addMorphTargetToMesh(mesh, 'browDown_L', 'browDownLeft', createTarget(true, -headHeight * 0.03 * scale, headHeight * 0.005));
+    addMorphTargetToMesh(mesh, 'browDown_R', 'browDownRight', createTarget(false, -headHeight * 0.03 * scale, headHeight * 0.005));
+    addMorphTargetToMesh(mesh, 'browInnerUp', 'browInnerUp', createTarget(true, headHeight * 0.035 * scale));
+    addMorphTargetToMesh(mesh, 'browOuterUp_L', 'browOuterUpLeft', createTarget(true, headHeight * 0.035 * scale));
+    addMorphTargetToMesh(mesh, 'browOuterUp_R', 'browOuterUpRight', createTarget(false, headHeight * 0.035 * scale));
+    added += 5;
+  } else {
+    const scale = eyeIntensity * globalIntensity;
+    addMorphTargetToMesh(mesh, 'eyeBlink_L', 'eyeBlinkLeft', createTarget(true, -headHeight * 0.04 * scale, -headHeight * 0.005));
+    addMorphTargetToMesh(mesh, 'eyeBlink_R', 'eyeBlinkRight', createTarget(false, -headHeight * 0.04 * scale, -headHeight * 0.005));
+    addMorphTargetToMesh(mesh, 'eyeSquint_L', 'eyeSquintLeft', createTarget(true, headHeight * 0.012 * scale));
+    addMorphTargetToMesh(mesh, 'eyeSquint_R', 'eyeSquintRight', createTarget(false, headHeight * 0.012 * scale));
+    addMorphTargetToMesh(mesh, 'eyeWide_L', 'eyeWideLeft', createTarget(true, headHeight * 0.025 * scale));
+    addMorphTargetToMesh(mesh, 'eyeWide_R', 'eyeWideRight', createTarget(false, headHeight * 0.025 * scale));
+    added += 6;
+  }
+
+  const total = geom.morphAttributes.position.length;
+  mesh.morphTargetInfluences = new Array(total).fill(0);
+  if (typeof mesh.updateMorphTargets === 'function') mesh.updateMorphTargets();
+  geom.needsUpdate = true;
+
+  return added;
+}
+
+/**
+ * Synthesizes all 52 ARKit / FACS facial blendshapes on the primary face skin mesh.
+ *
+ * @param {THREE.Mesh} mesh - The target 3D face mesh to auto-rig
+ * @param {Object} [options] - Calibration intensities and options
+ * @param {number} [options.globalIntensity] - Global deformation scale multiplier (default 1.0)
  * @param {number} [options.mouthIntensity] - Mouth and jaw deformation multiplier (default 1.0)
  * @param {number} [options.eyeIntensity] - Eye and eyelid deformation multiplier (default 1.0)
  * @param {number} [options.browIntensity] - Brow deformation multiplier (default 1.0)
  * @param {THREE.Bone|null} [options.headBone] - Optional skeletal head bone for precise cranial isolation
+ * @param {Object|null} [precomputedHead] - Optional precomputed cranial analysis
  * @returns {number} Count of blendshapes synthesized
  */
-export function synthesizeARKitBlendshapes(mesh, options = {}) {
+export function synthesizeARKitBlendshapes(mesh, options = {}, precomputedHead = null) {
   if (!mesh || !mesh.geometry) return 0;
 
   const geom = mesh.geometry;
@@ -849,7 +1265,7 @@ export function synthesizeARKitBlendshapes(mesh, options = {}) {
   } = options;
 
   // 1. Analyze and isolate the cranial/head region
-  const head = analyzeHeadRegion(mesh, headBone);
+  const head = precomputedHead || analyzeHeadRegion(mesh, headBone);
 
   const headCenterX = (head.headMinX + head.headMaxX) * 0.5;
   const halfWidth = head.headWidth * 0.5;
@@ -964,29 +1380,47 @@ export function synthesizeARKitBlendshapes(mesh, options = {}) {
 }
 
 /**
- * Re-synthesizes or scales blendshapes on the model with custom user rig settings.
+ * Re-synthesizes or scales blendshapes across all facial meshes with custom user rig settings.
  *
  * @param {THREE.Object3D} model
  * @param {Object} [options]
  * @returns {number}
  */
 export function rebuildModelBlendshapes(model, options = {}) {
-  const faceMesh = findFaceMesh(model);
-  if (!faceMesh || !faceMesh.geometry) return 0;
+  const components = findFacialComponentMeshes(model);
+  if (!components.faceMesh) return 0;
 
-  // Clear existing synthesized morph targets if present
-  const geom = faceMesh.geometry;
-  if (geom.morphAttributes && geom.morphAttributes.position) {
-    geom.morphAttributes.position = [];
-  }
-  faceMesh.morphTargetDictionary = {};
-  geom.morphTargetsRelative = true;
+  // Clear existing synthesized morph targets across all component meshes
+  const clearMeshMorphs = (mesh) => {
+    if (mesh && mesh.geometry) {
+      if (mesh.geometry.morphAttributes && mesh.geometry.morphAttributes.position) {
+        mesh.geometry.morphAttributes.position = [];
+      }
+      mesh.morphTargetDictionary = {};
+      mesh.geometry.morphTargetsRelative = true;
+    }
+  };
 
-  return synthesizeARKitBlendshapes(faceMesh, options);
+  clearMeshMorphs(components.faceMesh);
+  components.eyeMeshes.forEach(clearMeshMorphs);
+  components.teethMeshes.forEach(clearMeshMorphs);
+  components.tongueMeshes.forEach(clearMeshMorphs);
+  components.lashBrowMeshes.forEach(clearMeshMorphs);
+
+  const head = analyzeHeadRegion(components.faceMesh, options.headBone);
+  let totalAdded = 0;
+
+  totalAdded += synthesizeARKitBlendshapes(components.faceMesh, options, head);
+  components.eyeMeshes.forEach((m) => { totalAdded += synthesizeEyeBlendshapes(m, head, options); });
+  components.teethMeshes.forEach((m) => { totalAdded += synthesizeTeethBlendshapes(m, head, options); });
+  components.tongueMeshes.forEach((m) => { totalAdded += synthesizeTongueBlendshapes(m, head, options); });
+  components.lashBrowMeshes.forEach((m) => { totalAdded += synthesizeLashBrowBlendshapes(m, head, options); });
+
+  return totalAdded;
 }
 
 /**
- * Checks model and automatically synthesizes 52 ARKit blendshapes if absent.
+ * Checks model and automatically synthesizes 52 ARKit blendshapes across all facial components if absent.
  * @param {THREE.Object3D} model
  * @param {number} currentCoverage
  * @param {Object} [options]
@@ -998,11 +1432,20 @@ export function ensureModelBlendshapes(model, currentCoverage = 0, options = {})
     return 0;
   }
 
-  const faceMesh = findFaceMesh(model);
-  if (!faceMesh) {
-    console.warn('[Synthesizer] Nenhuma malha facial encontrada para síntese de blendshapes.');
+  const components = findFacialComponentMeshes(model);
+  if (!components.faceMesh) {
+    console.warn('[Synthesizer] Nenhuma malha facial encontrada para sintese de blendshapes.');
     return 0;
   }
 
-  return synthesizeARKitBlendshapes(faceMesh, options);
+  const head = analyzeHeadRegion(components.faceMesh, options.headBone);
+  let totalAdded = 0;
+
+  totalAdded += synthesizeARKitBlendshapes(components.faceMesh, options, head);
+  components.eyeMeshes.forEach((m) => { totalAdded += synthesizeEyeBlendshapes(m, head, options); });
+  components.teethMeshes.forEach((m) => { totalAdded += synthesizeTeethBlendshapes(m, head, options); });
+  components.tongueMeshes.forEach((m) => { totalAdded += synthesizeTongueBlendshapes(m, head, options); });
+  components.lashBrowMeshes.forEach((m) => { totalAdded += synthesizeLashBrowBlendshapes(m, head, options); });
+
+  return totalAdded;
 }

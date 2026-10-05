@@ -15,6 +15,17 @@ docs/
 node_modules/
 npm-debug.log*
 
+# Local test 3D models & imports (not bundled in repo)
+Isabel1.1OBJ/
+Isabella*/
+test_models/
+user_models/
+*.obj
+*.mtl
+*.fbx
+*.blend
+*.blend1
+
 # Xcode / iOS artifacts
 ios/
 *.xcodeproj/
